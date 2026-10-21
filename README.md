@@ -169,6 +169,10 @@ npm test           # node --test：surface / edits / backup / host 路由 / clie
 - `test/` — node:test 测试（含 `host-routes.test.mjs` 的真实路由分发和 `backup.test.mjs`）
 - `scripts/verify-live.mjs` — 只读 CDP 实机检查（从不保存/压缩）
 
+## 代码结构图
+
+[`docs/architecture.html`](docs/architecture.html) 是自包含的代码结构图（浏览器打开，支持明暗主题），覆盖浏览器端工作台、宿主端六条路由与写入路径、消息投影/备份，以及所消费的 DSH 核心服务。
+
 ## 已知限制 / 非目标
 
 - 不做自动调度压缩、不修改其他插件或 profile、不提供会话级撤销；「撤销」只回退工作台里的本地改动。

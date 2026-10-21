@@ -1,0 +1,40 @@
+# Prebuilt runtime artifacts are committed on purpose.
+# `dsh plugin add` from GitHub must work without a build step, so lib/*.js and
+# src/vendor.bundle.js are tracked. Do not add them to this file.
+
+# dependencies
+node_modules/
+
+# npm pack output
+*.tgz
+
+# local backups, drafts and temporary files
+*.tmp
+*.bak
+*.orig
+*.rej
+*.log
+
+# local environment
+.env
+.env.local
+
+# OS / editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# caches and build metadata
+.cache/
+*.tsbuildinfo
+
+# local verification artifacts (CDP scripts write here)
+docs/verify/
+
+# internal audit/verification artifacts (contain local paths and session ids;
+# kept in the working tree for the maintainer, never published)
+docs/review/
+docs/verification/
+docs/*.png
+.archify/

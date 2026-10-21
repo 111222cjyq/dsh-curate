@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-label="dsh-curate">
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- context window frame -->
+    <rect x="7.5" y="7.5" width="49" height="49" rx="11" stroke="#8fa3bb" stroke-width="3.5" stroke-opacity="0.85"/>
+    <!-- kept messages (top and bottom) -->
+    <path d="M17 21h30" stroke="#8fa3bb" stroke-width="4" stroke-opacity="0.85"/>
+    <path d="M17 43h30" stroke="#8fa3bb" stroke-width="4" stroke-opacity="0.85"/>
+    <!-- the message under curation -->
+    <path d="M17 32h20" stroke="#247bbf" stroke-width="4.5"/>
+    <!-- "important / keep" check mark -->
+    <path d="M43 31.5 46.5 35 52 27.5" stroke="#247bbf" stroke-width="4"/>
+  </g>
+</svg>

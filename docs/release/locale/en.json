@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Context curation",
+    "description": "Human-in-the-loop context curation workbench: mark turns or single messages to keep verbatim or to summarize, rewrite user, assistant, tool-result and injected-context messages in place without a model call, then compress the marked ranges with model-written summaries or the official /compact. A local JSON backup is written before every write to the session."
+  }
+}

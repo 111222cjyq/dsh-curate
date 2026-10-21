@@ -1,0 +1,12 @@
+# dsh-curate bundle patch: inserts the plugin row into the profile roster.
+#
+# The node half serves the loopback-only /dsh-curate/* routes (state, content,
+# message, apply, edit, compact). The browser half (exports "./client") mounts
+# the header entry and the full-screen curation workbench.
+#
+# The entry name is the BARE package name on purpose: the client-module scanner
+# resolves `<name>/package.json`, so a subpath entry would be cached as "not a
+# client package" and the browser half would silently never load.
+- insert:
+    - id: dsh-curate
+      name: 'dsh-curate'

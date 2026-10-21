@@ -1,0 +1,95 @@
+{
+  "name": "dsh-curate",
+  "version": "0.5.0",
+  "description": "Human-in-the-loop context curation: triage turns, rewrite messages, then compress the session history in place with model-written summaries and a local backup.",
+  "icon": "assets/icon.svg",
+  "author": "111222cjyq (https://github.com/111222cjyq/dsh-curate)",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/surface.js",
+    "lib/backup.js",
+    "lib/client.js",
+    "lib/edits.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "NOTICE.md",
+    "assets/icon.svg",
+    "locale/*.json"
+  ],
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "context",
+    "compression",
+    "compaction",
+    "curation",
+    "human-in-the-loop",
+    "session",
+    "summarization"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/111222cjyq/dsh-curate.git"
+  },
+  "homepage": "https://github.com/111222cjyq/dsh-curate#readme",
+  "bugs": {
+    "url": "https://github.com/111222cjyq/dsh-curate/issues"
+  },
+  "engines": {
+    "node": ">=22",
+    "dsh": ">=0.2.1-rc.2"
+  },
+  "scripts": {
+    "build:vendor": "node scripts/build-vendor.mjs",
+    "build:client": "node scripts/build-client.mjs",
+    "build": "npm run build:vendor && npm run build:client",
+    "check": "node --check lib/index.js && node --check lib/surface.js && node --check lib/backup.js && node --check lib/edits.js && node --check lib/client.js",
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "devDependencies": {
+    "@deepseek-ai/dsh-session": "^0.2.1-rc.2",
+    "dompurify": "^3.2.4",
+    "esbuild": "^0.25.0",
+    "jsdom": "^26.0.0",
+    "marked": "^15.0.7",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "turndown": "^7.2.0",
+    "turndown-plugin-gfm": "^1.0.2"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-session": "^0.2.1-rc.2"
+  },
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
+    },
+    "compatibility": {
+      "dshReleases": {
+        "0.2.1-rc.2": "compatible"
+      }
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

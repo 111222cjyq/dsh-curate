@@ -544,8 +544,8 @@ test('the stats bar refresh control reloads the context', async () => {
   const { root, container, act } = await mountWorkbench(win, mod)
   try {
     assert.equal(stateCalls, 1)
-    const refresh = Array.from(container.querySelectorAll('.dshcurate-stats button'))
-      .find((button) => /Refresh context|刷新上下文/.test(button.textContent))
+    const refresh = Array.from(container.querySelectorAll('.dshcurate-stats button, .dshcurate-head button'))
+      .find((button) => /Refresh context|刷新上下文/.test(button.getAttribute('aria-label') || button.textContent))
     assert.ok(refresh, 'the refresh control is rendered')
     await act(async () => { refresh.click() })
     await settle(act, 60)
@@ -608,8 +608,8 @@ test('a superseded context load cannot overwrite a newer one', async () => {
   const { root, container, act } = await mountWorkbench(win, mod)
   try {
     assert.equal(pending.length, 1, 'the mount starts one /state request')
-    const refresh = Array.from(container.querySelectorAll('.dshcurate-stats button'))
-      .find((button) => /Refresh context|刷新上下文/.test(button.textContent))
+    const refresh = Array.from(container.querySelectorAll('.dshcurate-stats button, .dshcurate-head button'))
+      .find((button) => /Refresh context|刷新上下文/.test(button.getAttribute('aria-label') || button.textContent))
     await act(async () => { refresh.click() })
     assert.equal(pending.length, 2, 'refresh supersedes the in-flight load')
     const newer = statePayload()

@@ -1,3 +1,11 @@
+# CI workflow for the dsh-curate repository.
+#
+# This file lives here, not at .github/workflows/ci.yml, because pushing a
+# workflow file requires a GitHub token with the `workflow` scope. To enable
+# CI: grant that scope (`gh auth refresh -h github.com -s workflow`), then
+#   mkdir -p .github/workflows && git mv docs/release/ci.yml .github/workflows/ci.yml
+# and push. Test-only: no publish, no secrets, no registry writes.
+
 name: ci
 
 # Test-only workflow: no publish, no secrets, no registry writes.

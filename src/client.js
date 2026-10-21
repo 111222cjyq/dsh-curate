@@ -2700,6 +2700,17 @@ window.__ModuleLoader__.load({
           jsx('button', {
             type: 'button',
             className: 'dshcurate-icon',
+            // Refresh stays usable while a load is in flight: load() supersedes
+            // the previous request instead of racing it.
+            disabled: applyingEdits || compacting,
+            title: tr('panel.refresh'),
+            'aria-label': tr('panel.refresh'),
+            onClick: load,
+            children: '↻',
+          }),
+          jsx('button', {
+            type: 'button',
+            className: 'dshcurate-icon',
             title: tr('panel.close'),
             'aria-label': tr('panel.close'),
             onClick: onClose,
@@ -3039,16 +3050,6 @@ window.__ModuleLoader__.load({
           jsx('span', { children: tr('stats.after', { tokens: fmtTokens(afterTokens) }) }),
           jsx('span', { children: jsx('b', { children: tr('stats.saved', { tokens: fmtTokens(Math.max(0, surfaceTokens - afterTokens)) }) }) }),
           edits.length > 0 ? jsx('span', { children: jsx('b', { children: tr('footer.pending', { count: edits.length }) }) }) : null,
-          jsx('button', {
-            type: 'button',
-            className: 'dshcurate-btn small',
-            // Refresh stays usable while a load is in flight: load() supersedes
-            // the previous request instead of racing it.
-            disabled: applyingEdits || compacting,
-            title: tr('panel.refresh'),
-            onClick: load,
-            children: tr('panel.refresh'),
-          }),
         ],
       })
       const scope = jsxs('div', {

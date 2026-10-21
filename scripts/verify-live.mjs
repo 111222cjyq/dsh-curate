@@ -345,7 +345,14 @@ function panelShapeExpression() {
       layer: document.querySelectorAll('.dshcurate-layer').length,
       title: (panel.querySelector('.dshcurate-title')?.textContent || '').trim(),
       help: panel.querySelectorAll('.dshcurate-help').length,
-      close: panel.querySelectorAll('.dshcurate-icon').length,
+      close: Array.from(panel.querySelectorAll('.dshcurate-icon')).filter((button) => /close|关闭/i.test(String(button.getAttribute('aria-label') || button.getAttribute('title') || ''))).length,
+      refresh: Array.from(panel.querySelectorAll('.dshcurate-icon')).filter((button) => /refresh|刷新/i.test(String(button.getAttribute('aria-label') || button.getAttribute('title') || ''))).length,
+      refreshVisible: (() => {
+        const button = Array.from(panel.querySelectorAll('.dshcurate-icon')).find((candidate) => /refresh|刷新/i.test(String(candidate.getAttribute('aria-label') || candidate.getAttribute('title') || '')))
+        if (button === undefined) return false
+        const box = button.getBoundingClientRect()
+        return box.width > 4 && box.height > 4 && box.right <= panel.getBoundingClientRect().right + 1
+      })(),
       stats: (panel.querySelector('.dshcurate-stats')?.textContent || '').trim(),
       statSpans: panel.querySelectorAll('.dshcurate-stats > span').length,
       scope: (panel.querySelector('.dshcurate-scope')?.textContent || '').trim(),
@@ -493,8 +500,9 @@ async function closeWorkbench(send) {
   const result = await evaluate(send, `(() => {
     const panel = document.querySelector('.dshcurate-panel')
     if (panel === null) return 'absent'
-    const button = panel.querySelector('.dshcurate-icon')
-    if (button === null) return 'no-close'
+    const button = Array.from(panel.querySelectorAll('.dshcurate-icon'))
+      .find((candidate) => /close|关闭/i.test(String(candidate.getAttribute('aria-label') || candidate.getAttribute('title') || '')))
+    if (button === undefined) return 'no-close'
     button.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0 }))
     button.click()
     return 'clicked'
@@ -669,6 +677,7 @@ async function main() {
     check('panel title is present', new RegExp(patternSource('panelTitle'), 'i').test(panel.title), panel.title)
     check('help affordance is present', panel.help === 1, `help=${panel.help}`)
     check('close affordance is present', panel.close === 1, `close=${panel.close}`)
+    check('refresh affordance is present and visible', panel.refresh === 1 && panel.refreshVisible === true, `refresh=${panel.refresh} visible=${panel.refreshVisible}`)
     check('panel finished loading (no stuck loading state)', panel.empty === '', panel.empty)
     check('idle session shows no busy/error alert', panel.alerts.length === 0, clip(panel.alerts))
     check('stats bar shows token accounting', panel.statSpans >= 3 && /tokens/i.test(panel.stats) && new RegExp(patternSource('saved'), 'i').test(panel.stats), clip(panel.stats))
@@ -1135,7 +1144,7 @@ async function main() {
       if (drafts !== null) await evaluate(send, draftsRestoreExpression(drafts))
     } catch {}
     try {
-      await evaluate(send, `(() => { const panel = document.querySelector('.dshcurate-panel'); const button = panel === null ? null : panel.querySelector('.dshcurate-icon'); if (button !== null) button.click(); return true })()`)
+      await evaluate(send, `(() => { const panel = document.querySelector('.dshcurate-panel'); if (panel === null) return true; const button = Array.from(panel.querySelectorAll('.dshcurate-icon')).find((candidate) => /close|关闭/i.test(String(candidate.getAttribute('aria-label') || candidate.getAttribute('title') || ''))); if (button !== undefined) button.click(); return true })()`)
     } catch {}
     try {
       socket.close()

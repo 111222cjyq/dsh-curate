@@ -244,3 +244,18 @@ cd awesome-dsh-plugin && npm ci && node scripts/generate-readme.mjs
   `lib/types/types.d.ts` (`icon`, `PluginLocalizedMeta`, `DshEnginesManifest`);
   `@deepseek-ai/dsh-app-boot@0.2.1-rc.2` `readPluginMeta`/`iconOf`/
   `unmetRequirements` in `lib/index.js`.
+
+---
+
+## Status as of 2026-10-22 (0.5.0)
+
+| Step | State |
+|---|---|
+| package metadata (repository/homepage/bugs/author/icon/locale/engines/peer/publishConfig) | **applied** in `package.json`; `node docs/release/verify-release.mjs --strict` = 21 pass / 1 warn (screenshots intentionally omitted for privacy) / 0 fail |
+| version | `0.5.0` in `package.json`; host reads it at runtime, client build injects it; `CHANGELOG.md` updated |
+| GitHub repository | created and pushed: https://github.com/111222cjyq/dsh-curate (`main` at the 0.5.0 tree), topic `dsh-plugin` set; description set |
+| local git | initialized in the project (`main`), two commits: initial 0.5.0 release + header-refresh fix + architecture diagram |
+| CI | workflow parked at `docs/release/ci.yml` because the token lacks the `workflow` scope; move it back after `gh auth refresh -h github.com -s workflow` |
+| npm publish | **not done** (no npm login); catalog listing does not require it. `npm pack --dry-run` = 13 files / ~104 kB packed, no dev leakage |
+| catalog PR | **scheduled**: run `docs/release/submit-catalog.sh --check` after the repository is 24h old (created 2026-10-21T15:35:37Z), then `docs/release/submit-catalog.sh` |
+| screenshots | intentionally not shipped: the only live capture contains a personal session. Recapture a clean session before adding `screenshots.json` (optional) |

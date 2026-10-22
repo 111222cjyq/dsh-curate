@@ -264,3 +264,41 @@ test('classifyEditTarget finds the reasoning+text blocks of a real reply shape',
   assert.equal(target.editableBlocks.length, 2)
   assert.deepEqual(target.editableBlocks.map((block) => block.kind), ['reasoning', 'text'])
 })
+
+// --- 0.5.2: appending the missing reply text --------------------------------
+
+function reasoningOnlyReplyEvent(seq = 12) {
+  return {
+    seq,
+    type: 'assistant/message',
+    data: { turn: 3, step: 1, message: { id: `reply-${seq}`, role: 'assistant', content: [{ type: 'reasoning', text: '思考但被中断', signature: 'sig-2' }] } },
+  }
+}
+
+test('patch grammar accepts an append target for a text-less reply', () => {
+  const data = buildPatchData([{ seq: 12, append: true, kind: 'text', text: '补充的正文' }])
+  assert.deepEqual(data, { version: 1, targets: [{ seq: 12, append: true, kind: 'text', text: '补充的正文' }] })
+  assert.throws(() => validatePatchData({ version: 1, targets: [{ seq: 12, append: true, kind: 'reasoning', text: 'x' }] }), /appended target must be text/)
+  assert.throws(() => validatePatchData({ version: 1, targets: [{ seq: 12, append: true, kind: 'text', blockIndex: 0, text: 'x' }] }), /must not carry a blockIndex/)
+})
+
+test('applyTargetsToMessage appends a text block after the reasoning', () => {
+  const patched = applyTargetsToMessage(reasoningOnlyReplyEvent().data.message, [
+    { seq: 12, append: true, kind: 'text', text: '补充的正文' },
+  ])
+  assert.deepEqual(patched.content.map((block) => block.type), ['reasoning', 'text'])
+  assert.equal(patched.content[1].text, '补充的正文')
+  assert.equal(patched.content[0].signature, 'sig-2', 'append leaves the reasoning block untouched')
+})
+
+test('patchProjection exposes an appended reply text to the model', () => {
+  const event = { seq: 13, type: PATCH_TYPE, data: buildPatchData([{ seq: 12, append: true, kind: 'text', text: '补充的正文' }]) }
+  const projected = patchProjection().project(event, {
+    nodes: [12],
+    events: [reasoningOnlyReplyEvent(12)],
+    baseSeq: 12,
+    messages: new Map(),
+  })
+  assert.ok(projected.has(12))
+  assert.deepEqual(projected.get(12).content.map((block) => block.type), ['reasoning', 'text'])
+})

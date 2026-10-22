@@ -774,3 +774,90 @@ test('a busy session explains why compression cannot start instead of a dead but
     await unmountQuietly(act, root)
   }
 })
+
+test('a reasoning-only reply can be repaired by appending the missing text', async () => {
+  const payload = statePayload()
+  const last = payload.nodes[payload.nodes.length - 1]
+  payload.nodes[payload.nodes.length - 1] = {
+    ...last,
+    role: 'assistant',
+    type: 'assistant/message',
+    preview: '[assistant message with no text]',
+    previewPlain: '',
+    editable: true,
+    editKind: 'reply',
+  }
+  const message = {
+    ok: true,
+    version: PACKAGE_VERSION,
+    seq: last.seq,
+    turn: 3,
+    messageId: last.messageId,
+    role: 'assistant',
+    type: 'assistant/message',
+    tokens: 12,
+    text: '[assistant message with no text]',
+    promptText: '',
+    blocks: [{ index: 0, type: 'reasoning', kind: 'reasoning', text: 'thinking only' }],
+    editableBlocks: [{ index: 0, kind: 'reasoning', text: 'thinking only' }],
+    canAppendText: true,
+    editable: true,
+    editKind: 'reply',
+    editReason: '',
+    attachments: 0,
+    patched: false,
+    truncated: false,
+    lastSeq: payload.lastSeq,
+  }
+  const fetchImpl = async (url) => {
+    if (String(url).includes('/dsh-curate/state')) return { ok: true, json: async () => payload }
+    if (String(url).includes('/dsh-curate/message')) return { ok: true, json: async () => message }
+    throw new Error(`unexpected fetch: ${url}`)
+  }
+  const { win, mod } = loadClient(fetchImpl)
+  const { root, container, act } = await mountWorkbench(win, mod)
+  try {
+    const tail = container.querySelector('.dshcurate-card.locked:last-of-type') || container.querySelectorAll('.dshcurate-card.locked')[1]
+    assert.ok(tail, 'the tail card renders')
+    const edit = Array.from(tail.querySelectorAll('button'))
+      .find((button) => /^Edit$|^编辑$/.test((button.textContent || '').trim()))
+    assert.ok(edit, 'the tail message offers edit')
+    await act(async () => { edit.click() })
+    await settle(act, 120)
+    assert.match(container.textContent, /Add the missing reply text|补充回复正文/, 'the editor defaults to adding the missing text')
+    const select = container.querySelector('.dshcurate-editor select')
+    assert.ok(select, 'the block picker offers both the new text and the reasoning block')
+    const options = Array.from(select.querySelectorAll('option')).map((option) => option.textContent.trim())
+    assert.ok(options.some((text) => /New text|新增正文/.test(text)), JSON.stringify(options))
+    assert.ok(options.some((text) => /Reasoning|思维链/.test(text)), JSON.stringify(options))
+    assert.match(container.textContent, /saving adds a text block|保存后会新增一段正文/)
+
+    // Switch to source, type the missing answer, save.
+    const source = Array.from(container.querySelectorAll('.dshcurate-editor .dshcurate-modes button'))
+      .find((button) => /^Source$|^源码$/.test((button.textContent || '').trim()))
+    assert.ok(source, 'the source view is available')
+    await act(async () => { source.click() })
+    await settle(act, 60)
+    const textarea = container.querySelector('.dshcurate-editor textarea.dshcurate-source')
+    assert.ok(textarea, 'the source textarea renders')
+    const setValue = Object.getOwnPropertyDescriptor(win.HTMLTextAreaElement.prototype, 'value').set
+    await act(async () => {
+      setValue.call(textarea, '补充的助手回复正文')
+      textarea.dispatchEvent(new win.Event('input', { bubbles: true }))
+    })
+    await settle(act, 60)
+    const save = Array.from(container.querySelectorAll('.dshcurate-editor-foot button'))
+      .find((button) => /Save edit|保存修改/.test(button.textContent))
+    assert.ok(save, 'the save button renders')
+    assert.equal(save.disabled, false)
+    await act(async () => { save.click() })
+    await settle(act, 80)
+    assert.equal(container.querySelectorAll('.dshcurate-editor').length, 0, 'saving closes the editor')
+    const footer = Array.from(container.querySelectorAll('.dshcurate-foot button')).map((button) => ({ text: button.textContent.trim(), disabled: button.disabled }))
+    assert.match(footer[0].text, /Apply edits to context|修改并应用到上下文/)
+    assert.equal(footer[0].disabled, false, 'the staged append enables apply')
+    assert.match(container.textContent, /A text block will be added|应用后将新增正文/)
+  } finally {
+    await unmountQuietly(act, root)
+  }
+})

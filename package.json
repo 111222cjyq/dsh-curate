@@ -1,6 +1,6 @@
 {
   "name": "dsh-curate",
-  "version": "0.5.1",
+  "version": "0.5.2",
   "description": "Human-in-the-loop context curation: triage turns, rewrite messages, then compress the session history in place with model-written summaries and a local backup.",
   "icon": "assets/icon.svg",
   "author": "111222cjyq (https://github.com/111222cjyq/dsh-curate)",

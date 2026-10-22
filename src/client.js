@@ -180,6 +180,12 @@ window.__ModuleLoader__.load({
       'footer.pending': '{count} 处修改待应用',
       'edit.title.tool': '编辑工具结果',
       'edit.title.context': '编辑注入上下文',
+      'edit.title.append': '补充回复正文',
+      'edit.append.hint': '这条回复只有思维链、没有正文；保存后会新增一段正文。',
+      'edit.reasoningOnly.hint': '这条回复只有思维链，当前编辑的是思维链。',
+      'edit.empty': '内容为空，无法保存。',
+      'edit.block.append': '新增正文',
+      'edit.append.staged': '应用后将新增正文：{text}',
       'edit.toolArgsReadOnly': '结构化工具调用参数不可编辑。',
       'edit.entryHint': '点消息右上角「编辑」可改写正文、思维链、工具结果或注入上下文。',
       'view.all': '全部内容',
@@ -363,6 +369,12 @@ window.__ModuleLoader__.load({
       'footer.pending': '{count} pending edit(s)',
       'edit.title.tool': 'Edit the tool result',
       'edit.title.context': 'Edit the injected context',
+      'edit.title.append': 'Add the missing reply text',
+      'edit.append.hint': 'This reply has reasoning but no text; saving adds a text block.',
+      'edit.reasoningOnly.hint': 'This reply has only reasoning; you are editing the reasoning block.',
+      'edit.empty': 'Nothing to save: the editor is empty.',
+      'edit.block.append': 'New text',
+      'edit.append.staged': 'A text block will be added: {text}',
       'edit.toolArgsReadOnly': 'Structured tool-call arguments are not editable.',
       'edit.entryHint': 'Use Edit at the top-right of a message to rewrite text, reasoning, a tool result or injected context.',
       'view.all': 'All content',
@@ -618,6 +630,17 @@ window.__ModuleLoader__.load({
     /** Stable key for one staged edit. */
     function editKeyFor(mode, seq, blockIndex) {
       return mode === 'prompt' ? `p:${seq}` : `${mode}:${seq}:${blockIndex}`
+    }
+
+    /** One staged edit as the /edit request expects it. */
+    function editRequestOf(edit) {
+      if (edit.append === true) return { seq: edit.seq, mode: 'reply', append: true, kind: 'text', text: edit.text }
+      return {
+        seq: edit.seq,
+        mode: edit.mode,
+        text: edit.text,
+        ...(edit.mode !== 'prompt' ? { blockIndex: edit.blockIndex, kind: edit.kind } : {}),
+      }
     }
 
     // --- Markdown vendor helpers (same converters as dsh-edit-turn's panel) ---
@@ -1280,7 +1303,6 @@ window.__ModuleLoader__.load({
             contentEditable: disabled ? false : true,
             suppressContentEditableWarning: true,
             'data-placeholder': placeholder || tr('edit.placeholder'),
-            title: tr('group.view.rendered'),
             onInput: onRenderedInput,
             onBlur: onRenderedBlur,
             onFocus: () => {
@@ -1309,15 +1331,21 @@ window.__ModuleLoader__.load({
       if (editing.mode === 'tool' || editing.mode === 'context' || textOnlyView) {
         blockList = blockList.filter((block) => block.kind === 'text')
       }
+      if (editing.mode === 'reply' && message && message.canAppendText === true && !textOnlyView) {
+        blockList = [{ index: 'append', kind: 'text', append: true }, ...blockList]
+      }
       const showPicker = editing.mode !== 'prompt' && blockList.length > 1
-      const pendingBlock = editing.pendingBlock !== undefined && editing.pendingBlock !== null && editing.pendingBlock !== editing.blockIndex
-      const title = editing.mode === 'prompt'
-        ? tr('edit.title.prompt')
-        : editing.mode === 'reply'
-          ? tr('edit.title.reply')
-          : editing.mode === 'tool'
-            ? tr('edit.title.tool')
-            : tr('edit.title.context')
+      const currentBlockKey = editing.append === true ? 'append' : editing.blockIndex
+      const pendingBlock = editing.pendingBlock !== undefined && editing.pendingBlock !== null && editing.pendingBlock !== currentBlockKey
+      const title = editing.append === true
+        ? tr('edit.title.append')
+        : editing.mode === 'prompt'
+          ? tr('edit.title.prompt')
+          : editing.mode === 'reply'
+            ? tr('edit.title.reply')
+            : editing.mode === 'tool'
+              ? tr('edit.title.tool')
+              : tr('edit.title.context')
       return jsxs('div', {
         className: 'dshcurate-editor',
         children: [
@@ -1329,13 +1357,15 @@ window.__ModuleLoader__.load({
                 children: [
                   jsx('span', { children: tr('edit.block') }),
                   jsx('select', {
-                    value: String(editing.blockIndex),
+                    value: String(currentBlockKey),
                     'aria-label': tr('edit.block'),
                     disabled,
-                    onChange: (event) => onBlock(Number(event.target.value)),
+                    onChange: (event) => onBlock(event.target.value === 'append' ? 'append' : Number(event.target.value)),
                     children: blockList.map((block) => jsx('option', {
                       value: String(block.index),
-                      children: block.kind === 'reasoning' ? tr('edit.block.reasoning') : tr('edit.block.text'),
+                      children: block.append === true
+                        ? tr('edit.block.append')
+                        : block.kind === 'reasoning' ? tr('edit.block.reasoning') : tr('edit.block.text'),
                     }, block.index)),
                   }),
                 ],
@@ -1343,6 +1373,11 @@ window.__ModuleLoader__.load({
               jsx('span', { className: 'grow' }),
             ],
           }),
+          editing.append === true
+            ? jsx('div', { className: 'dshcurate-note', children: tr('edit.append.hint') })
+            : (editing.reasoningOnly === true
+              ? jsx('div', { className: 'dshcurate-note', children: tr('edit.reasoningOnly.hint') })
+              : null),
           pendingBlock ? jsxs('div', {
             className: 'dshcurate-confirm',
             children: [
@@ -1378,7 +1413,9 @@ window.__ModuleLoader__.load({
               jsx('button', {
                 type: 'button',
                 className: 'dshcurate-btn primary',
-                disabled: disabled || editing.value.trim() === '',
+                // Stay clickable when empty so the panel can explain why the
+                // save did not happen instead of a silent disabled control.
+                disabled: disabled,
                 onClick: onSave,
                 children: tr('edit.save'),
               }),
@@ -1399,6 +1436,7 @@ window.__ModuleLoader__.load({
       const reason = full && full.editReason ? full.editReason : node.editReason
       const blocks = full && Array.isArray(full.blocks) ? full.blocks : null
       const promptEdit = edits.find((edit) => edit.mode === 'prompt')
+      const appendEdit = edits.find((edit) => edit.append === true)
       const plain = typeof node.plainText === 'string' && node.plainText !== ''
         ? node.plainText
         : (typeof node.previewPlain === 'string' ? node.previewPlain : '')
@@ -1502,6 +1540,9 @@ window.__ModuleLoader__.load({
           full && full.truncated ? jsx('div', { className: 'dshcurate-note', children: tr('detail.truncated') }) : null,
           !editable && reason ? jsx('div', { className: 'dshcurate-note', children: String(reason) }) : null,
           body,
+          appendEdit !== undefined && !editingHere
+            ? jsx('div', { className: 'dshcurate-note', children: tr('edit.append.staged', { text: String(appendEdit.text || '').slice(0, 160) }) })
+            : null,
         ],
       })
     }
@@ -1842,16 +1883,18 @@ window.__ModuleLoader__.load({
           if (item.mode !== 'prompt' && item.mode !== 'reply' && item.mode !== 'tool' && item.mode !== 'context') continue
           if (typeof item.seq !== 'number' || !seqs.has(item.seq)) continue
           if (typeof item.text !== 'string') continue
-          if (item.mode !== 'prompt' && typeof item.blockIndex !== 'number') continue
+          const append = item.mode === 'reply' && item.append === true
+          if (item.mode !== 'prompt' && !append && typeof item.blockIndex !== 'number') continue
           restored.push({
-            key: editKeyFor(item.mode, item.seq, item.blockIndex),
+            key: editKeyFor(item.mode, item.seq, append ? 'append' : item.blockIndex),
             seq: item.seq,
             messageId: item.messageId || null,
             mode: item.mode,
-            blockIndex: typeof item.blockIndex === 'number' ? item.blockIndex : undefined,
-            kind: typeof item.kind === 'string' ? item.kind : undefined,
+            blockIndex: append ? null : (typeof item.blockIndex === 'number' ? item.blockIndex : undefined),
+            kind: append ? 'text' : (typeof item.kind === 'string' ? item.kind : undefined),
             text: item.text,
             original: typeof item.original === 'string' ? item.original : '',
+            ...(append ? { append: true } : {}),
           })
         }
         return restored
@@ -1970,6 +2013,7 @@ window.__ModuleLoader__.load({
             kind: edit.kind,
             text: edit.text,
             original: edit.original,
+            ...(edit.append === true ? { append: true } : {}),
           })),
         }
       }
@@ -2116,41 +2160,71 @@ window.__ModuleLoader__.load({
         const mode = full.editKind === 'prompt' || full.editKind === 'reply' || full.editKind === 'tool' || full.editKind === 'context'
           ? full.editKind
           : 'prompt'
-        let blockIndex = null
-        let kind = null
-        let original = ''
-        let value = ''
+        const messageId = node.messageId || full.messageId || null
+        const canAppend = mode === 'reply' && full.canAppendText === true
         if (mode !== 'prompt') {
           let blocks = Array.isArray(full.editableBlocks) ? full.editableBlocks : []
           if (mode === 'tool' || mode === 'context' || textOnlyView) blocks = blocks.filter((block) => block.kind === 'text')
-          if (blocks.length === 0) {
+          if (blocks.length === 0 && !canAppend) {
             showToast(tr('edit.readOnly'))
             return
           }
-          const previous = edits.find((edit) => edit.seq === node.seq && edit.mode === mode)
+          const appendEdit = edits.find((edit) => edit.seq === node.seq && edit.mode === mode && edit.append === true)
+          const reasoningOnly = canAppend && blocks.every((block) => block.kind !== 'text')
+          if (reasoningOnly) {
+            // A reply stopped after reasoning has no text block. The most useful
+            // edit is to append the missing answer text; the block picker can
+            // still switch to the reasoning block.
+            setEditing({
+              seq: node.seq,
+              messageId,
+              mode,
+              append: true,
+              blockIndex: null,
+              kind: 'text',
+              original: '',
+              value: appendEdit ? appendEdit.text : '',
+              viewMode: 'rendered',
+              message: full,
+              canAppend,
+              reasoningOnly,
+            })
+            return
+          }
+          const previous = edits.find((edit) => edit.seq === node.seq && edit.mode === mode && edit.append !== true)
           const block = previous
             ? (blocks.find((candidate) => candidate.index === previous.blockIndex) || blocks[0])
             : (blocks.find((candidate) => candidate.kind === 'text') || blocks[0])
-          blockIndex = block.index
-          kind = block.kind
-          original = block.text
-          const staged = edits.find((edit) => edit.key === editKeyFor(mode, node.seq, blockIndex))
-          value = staged ? staged.text : original
-        } else {
-          original = typeof full.promptText === 'string' ? full.promptText : ''
-          const staged = edits.find((edit) => edit.key === editKeyFor('prompt', node.seq))
-          value = staged ? staged.text : original
+          setEditing({
+            seq: node.seq,
+            messageId,
+            mode,
+            append: false,
+            blockIndex: block.index,
+            kind: block.kind,
+            original: block.text,
+            value: (edits.find((edit) => edit.key === editKeyFor(mode, node.seq, block.index)) || {}).text ?? block.text,
+            viewMode: mode === 'tool' ? 'source' : 'rendered',
+            message: full,
+            canAppend,
+            reasoningOnly,
+          })
+          return
         }
+        const original = typeof full.promptText === 'string' ? full.promptText : ''
+        const staged = edits.find((edit) => edit.key === editKeyFor('prompt', node.seq))
         setEditing({
           seq: node.seq,
-          messageId: node.messageId || full.messageId || null,
+          messageId,
           mode,
-          blockIndex,
-          kind,
+          blockIndex: null,
+          kind: null,
           original,
-          value,
-          viewMode: mode === 'tool' ? 'source' : 'rendered',
+          value: staged ? staged.text : original,
+          viewMode: 'rendered',
           message: full,
+          canAppend: false,
+          reasoningOnly: false,
         })
       }
 
@@ -2175,6 +2249,18 @@ window.__ModuleLoader__.load({
       /** Apply a pending block pick inside the open editor (no confirm layer). */
       function applyEditorBlock(current, index) {
         if (!current || !current.message) return current
+        if (index === 'append') {
+          const staged = edits.find((edit) => edit.key === editKeyFor('reply', current.seq, 'append'))
+          return {
+            ...current,
+            append: true,
+            blockIndex: null,
+            kind: 'text',
+            original: '',
+            value: staged ? staged.text : '',
+            pendingBlock: undefined,
+          }
+        }
         let blocks = Array.isArray(current.message.editableBlocks) ? current.message.editableBlocks : []
         if (current.mode === 'tool' || current.mode === 'context' || textOnlyView) {
           blocks = blocks.filter((block) => block.kind === 'text')
@@ -2184,6 +2270,7 @@ window.__ModuleLoader__.load({
         const staged = edits.find((edit) => edit.key === editKeyFor(current.mode, current.seq, index))
         return {
           ...current,
+          append: false,
           blockIndex: block.index,
           kind: block.kind,
           original: block.text,
@@ -2220,23 +2307,28 @@ window.__ModuleLoader__.load({
         if (!editing) return
         const text = typeof editing.value === 'string' ? editing.value : ''
         // Early returns must not leave a no-op snapshot on the undo stack.
-        if (text.trim() === '') return
+        if (text.trim() === '') {
+          showToast(tr('edit.empty'))
+          return
+        }
         if (text === editing.original) {
           setEditing(null)
           showToast(tr('edit.unchanged'))
           return
         }
         pushUndo()
-        const key = editKeyFor(editing.mode, editing.seq, editing.blockIndex)
+        const append = editing.append === true
+        const key = append ? editKeyFor('reply', editing.seq, 'append') : editKeyFor(editing.mode, editing.seq, editing.blockIndex)
         const next = {
           key,
           seq: editing.seq,
           messageId: editing.messageId,
-          mode: editing.mode,
-          blockIndex: editing.blockIndex,
-          kind: editing.kind,
+          mode: 'reply',
+          blockIndex: append ? null : editing.blockIndex,
+          kind: append ? 'text' : editing.kind,
           text,
           original: editing.original,
+          ...(append ? { append: true } : {}),
         }
         setEdits((current) => [...current.filter((edit) => edit.key !== key), next])
         setEditing(null)
@@ -2458,6 +2550,7 @@ window.__ModuleLoader__.load({
         const removeKeys = new Set()
         for (const item of applied) {
           if (item.mode === 'prompt') removeKeys.add(editKeyFor('prompt', item.seq))
+          else if (item.append === true) removeKeys.add(editKeyFor('reply', item.seq, 'append'))
           else removeKeys.add(editKeyFor(item.mode, item.seq, item.blockIndex))
         }
         for (const item of unchanged) {
@@ -2502,12 +2595,7 @@ window.__ModuleLoader__.load({
         setApplyingEdits(true)
         setErrorText('')
         try {
-          const data = await applyMessageEdits(sessionId, state ? state.lastSeq : -1, edits.map((edit) => ({
-            seq: edit.seq,
-            mode: edit.mode,
-            text: edit.text,
-            ...(edit.mode !== 'prompt' ? { blockIndex: edit.blockIndex, kind: edit.kind } : {}),
-          })))
+          const data = await applyMessageEdits(sessionId, state ? state.lastSeq : -1, edits.map(editRequestOf))
           adoptAppliedEdits(data)
           if (Array.isArray(data.applied) && data.applied.length === 0 && Array.isArray(data.unchanged) && data.unchanged.length > 0) {
             showToast(tr('edit.unchangedCount', { count: data.unchanged.length }))
@@ -2540,12 +2628,7 @@ window.__ModuleLoader__.load({
       }
 
       async function commitEditsForCompression() {
-        return applyMessageEdits(sessionId, state ? state.lastSeq : -1, edits.map((edit) => ({
-          seq: edit.seq,
-          mode: edit.mode,
-          text: edit.text,
-          ...(edit.mode !== 'prompt' ? { blockIndex: edit.blockIndex, kind: edit.kind } : {}),
-        })))
+        return applyMessageEdits(sessionId, state ? state.lastSeq : -1, edits.map(editRequestOf))
       }
 
       async function confirmCompression() {

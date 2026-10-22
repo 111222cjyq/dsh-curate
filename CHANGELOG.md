@@ -9,6 +9,24 @@ must be reconstructed from the repository history after the first push. The
 0.4.1 entry is dated from the working-tree file timestamps; confirm it against
 the actual release history before publishing.
 
+## [0.5.2] - 2026-10-22
+
+### Added
+
+- **Repair a reply that was stopped before producing text.** When an assistant
+  message has only a reasoning block (an aborted turn), the editor now opens on
+  "Add the missing reply text" and appends a text block through the message
+  projection instead of silently editing (and hiding) the reasoning. The block
+  picker can still switch to the reasoning block.
+
+### Fixed
+
+- Editing a reply with no text block used to open the reasoning editor without
+  saying so; the panel now names the target, explains the reasoning-only case,
+  and no longer puts a native "Rendered" tooltip over the editable area.
+- Saving an empty editor was a silent no-op; it now explains that there is
+  nothing to save, and the save button stays clickable for that feedback.
+
 ## [0.5.1] - 2026-10-22
 
 ### Fixed

@@ -160,6 +160,34 @@ test('planEdits accepts tool results and injected context', () => {
   )
 })
 
+test('planEdits can append the missing reply text to a reasoning-only reply', () => {
+  const events = surfaceEvents()
+  events.push({
+    seq: 6,
+    type: 'assistant/message',
+    data: { turn: 1, step: 2, message: { id: 'a2', role: 'assistant', content: [{ type: 'reasoning', text: 'thinking only', signature: 'sig' }] } },
+    surfaceOp: 'append',
+  })
+  events.push({ seq: 7, type: 'turn/end', data: { turn: 1 } })
+  const ops = __internals.planEdits(events, [
+    { seq: 6, mode: 'reply', append: true, kind: 'text', text: '补充的助手回复正文' },
+  ], new Map())
+  assert.equal(ops.length, 1)
+  assert.equal(ops[0].append, true)
+  assert.equal(ops[0].blockIndex, null)
+  assert.equal(ops[0].blockKind, 'text')
+
+  // Appending is only for replies without a text block.
+  assert.throws(
+    () => __internals.planEdits(events, [{ seq: 3, mode: 'reply', append: true, kind: 'text', text: 'x' }], new Map()),
+    (error) => error && error.code === 'not-editable',
+  )
+  assert.throws(
+    () => __internals.planEdits(events, [{ seq: 4, mode: 'tool', append: true, kind: 'text', text: 'x' }], new Map()),
+    (error) => error && error.code === 'invalid',
+  )
+})
+
 test('text-only summary source keeps only user/assistant text blocks', async () => {
   const events = surfaceEvents()
   events.push({ seq: 5, type: 'assistant/message', data: { turn: 1, step: 2, message: { id: 'a2', role: 'assistant', content: [{ type: 'text', text: 'answer text' }, { type: 'reasoning', text: 'hidden reasoning' }, { type: 'tool-call', id: 'call-1', name: 'bash', arguments: '{}' }] } }, surfaceOp: 'append' })

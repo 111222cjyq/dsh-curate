@@ -1799,6 +1799,34 @@ window.__ModuleLoader__.load({
       const loadTokenRef = react.useRef(null)
       const loadAbortRef = react.useRef(null)
       const mountedRef = react.useRef(true)
+      // The scroll container of the workbench body; the compression sheet is
+      // rendered at its top.
+      const bodyRef = react.useRef(null)
+
+      // Opening the compression sheet inserts it at the top of the scrollable
+      // body. A user who is scrolled down would otherwise see nothing change:
+      // the browser keeps their scroll anchor, so the sheet opens far above the
+      // viewport and the button looks dead. Scroll it into view and focus the
+      // first control for keyboard users.
+      react.useEffect(() => {
+        if (!compressOpen) return undefined
+        const body = bodyRef.current
+        if (body !== null) body.scrollTop = 0
+        const timer = setTimeout(() => {
+          const dialog = body !== null ? body.querySelector('.dshcurate-compress') : null
+          const focusable = dialog !== null
+            ? dialog.querySelector('input[type="radio"], input[type="checkbox"], button')
+            : null
+          if (focusable !== null && typeof focusable.focus === 'function') {
+            try {
+              focusable.focus({ preventScroll: true })
+            } catch {
+              focusable.focus()
+            }
+          }
+        }, 30)
+        return () => clearTimeout(timer)
+      }, [compressOpen])
 
       function showToast(message) {
         setToast(message)
@@ -3111,8 +3139,15 @@ window.__ModuleLoader__.load({
               jsx('button', {
                 type: 'button',
                 className: 'dshcurate-btn',
-                disabled: applyingEdits || compacting || busySession,
-                onClick: openCompression,
+                disabled: applyingEdits || compacting,
+                title: busySession ? tr('panel.busy') : undefined,
+                onClick: () => {
+                  if (busySession) {
+                    showToast(tr('panel.busy'))
+                    return
+                  }
+                  openCompression()
+                },
                 children: compacting ? tr('compress.running') : tr('footer.compress'),
               }),
               jsx('button', {
@@ -3132,11 +3167,13 @@ window.__ModuleLoader__.load({
               jsx('span', { className: 'spacer' }),
               jsx('span', {
                 className: 'note',
-                children: edits.length > 0
-                  ? tr('footer.pending', { count: edits.length })
-                  : selected.length === 0
-                    ? tr('footer.nothing')
-                    : '',
+                children: busySession
+                  ? tr('panel.busy')
+                  : edits.length > 0
+                    ? tr('footer.pending', { count: edits.length })
+                    : selected.length === 0
+                      ? tr('footer.nothing')
+                      : '',
               }),
               jsx('span', { className: 'note', children: tr('version.label', { version: PLUGIN_VERSION }) }),
             ],
@@ -3148,7 +3185,7 @@ window.__ModuleLoader__.load({
         className: 'dshcurate-panel',
         tabIndex: -1,
         'aria-labelledby': docked ? undefined : titleId,
-        children: [header, helpPopover, stats, scope, jsx('div', { className: 'dshcurate-body', children: body }), footer].filter(Boolean),
+        children: [header, helpPopover, stats, scope, jsx('div', { className: 'dshcurate-body', ref: bodyRef, children: body }), footer].filter(Boolean),
       })
       if (docked) {
         return jsx('div', {

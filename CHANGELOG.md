@@ -9,6 +9,18 @@ must be reconstructed from the repository history after the first push. The
 0.4.1 entry is dated from the working-tree file timestamps; confirm it against
 the actual release history before publishing.
 
+## [0.5.1] - 2026-10-22
+
+### Fixed
+
+- Clicking **Compress context** while the workbench body was scrolled down
+  opened the compression sheet above the viewport (browsers keep the scroll
+  anchor), so the button looked dead. The sheet now scrolls into view and takes
+  focus when it opens.
+- On a busy session the footer compress button is no longer a silently disabled
+  control: it explains the busy state in a toast/title, and the footer note shows
+  the reason even when the body is scrolled.
+
 ## [0.5.0] - 2026-10-21
 
 ### Fixed — browser half

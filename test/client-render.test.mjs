@@ -722,3 +722,55 @@ test('merging into a locked block explains the refusal and pushes no undo step',
     await unmountQuietly(act, root)
   }
 })
+
+test('opening the compression sheet scrolls it into view when the body is scrolled', async () => {
+  const payload = statePayload()
+  const fetchImpl = async (url) => {
+    if (String(url).includes('/dsh-curate/state')) return { ok: true, json: async () => payload }
+    throw new Error(`unexpected fetch: ${url}`)
+  }
+  const { win, mod } = loadClient(fetchImpl)
+  const { root, container, act } = await mountWorkbench(win, mod)
+  try {
+    const body = container.querySelector('.dshcurate-body')
+    assert.ok(body, 'the workbench has a scrollable body')
+    // Simulate a user who scrolled down the card list before pressing the
+    // footer button: without the fix the sheet opens far above the viewport.
+    body.scrollTop = 400
+    const compress = Array.from(container.querySelectorAll('.dshcurate-foot button'))
+      .find((button) => /Compress context|压缩上下文/.test(button.textContent))
+    assert.ok(compress, 'the footer offers compress')
+    await act(async () => { compress.click() })
+    await settle(act, 80)
+    assert.equal(container.querySelectorAll('.dshcurate-compress').length, 1, 'the sheet opens')
+    assert.equal(body.scrollTop, 0, 'the body scrolls to the sheet at the top')
+    assert.ok(container.querySelector('.dshcurate-compress input[type="radio"]'), 'the target choices render')
+    const focused = win.document.activeElement
+    assert.ok(focused && focused.closest && focused.closest('.dshcurate-compress'), 'focus moves into the sheet')
+  } finally {
+    await unmountQuietly(act, root)
+  }
+})
+
+test('a busy session explains why compression cannot start instead of a dead button', async () => {
+  const payload = { ...statePayload(), busy: true }
+  const fetchImpl = async (url) => {
+    if (String(url).includes('/dsh-curate/state')) return { ok: true, json: async () => payload }
+    throw new Error(`unexpected fetch: ${url}`)
+  }
+  const { win, mod } = loadClient(fetchImpl)
+  const { root, container, act } = await mountWorkbench(win, mod)
+  try {
+    const compress = Array.from(container.querySelectorAll('.dshcurate-foot button'))
+      .find((button) => /Compress context|压缩上下文/.test(button.textContent))
+    assert.ok(compress, 'the footer offers compress')
+    assert.equal(compress.disabled, false, 'the button is not a dead disabled control')
+    assert.match(compress.getAttribute('title') || '', /working|工作/)
+    await act(async () => { compress.click() })
+    await settle(act, 60)
+    assert.equal(container.querySelectorAll('.dshcurate-compress').length, 0, 'no sheet opens while busy')
+    assert.match(container.textContent, /session is working|会话正在工作/, 'a toast explains the busy state')
+  } finally {
+    await unmountQuietly(act, root)
+  }
+})

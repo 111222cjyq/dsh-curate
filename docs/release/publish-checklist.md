@@ -257,5 +257,22 @@ cd awesome-dsh-plugin && npm ci && node scripts/generate-readme.mjs
 | local git | initialized in the project (`main`), two commits: initial 0.5.0 release + header-refresh fix + architecture diagram |
 | CI | workflow parked at `docs/release/ci.yml` because the token lacks the `workflow` scope; move it back after `gh auth refresh -h github.com -s workflow` |
 | npm publish | **not done** (no npm login); catalog listing does not require it. `npm pack --dry-run` = 13 files / ~104 kB packed, no dev leakage |
-| catalog PR | **scheduled**: run `docs/release/submit-catalog.sh --check` after the repository is 24h old (created 2026-10-21T15:35:37Z), then `docs/release/submit-catalog.sh` |
+| catalog PR | **opened 2026-10-23**: [awesome-dsh-plugin#8843](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/8843), one file `data/plugins/111222cjyq__dsh-curate.yml`; CI green, awaiting maintainer review — see *Submission status* below |
 | screenshots | intentionally not shipped: the only live capture contains a personal session. Recapture a clean session before adding `screenshots.json` (optional) |
+
+---
+
+## Submission status as of 2026-10-23 (0.5.2)
+
+The catalog PR was submitted on 2026-10-23 once the repository passed the
+24-hour age floor (created `2026-10-21T15:35:37Z`).
+
+| Item | State |
+|---|---|
+| repository age | 37 h at submission — catalog requires ≥ 24 h |
+| catalog PR | [awesome-dsh-plugin#8843](https://github.com/awesome-dsh-plugin/awesome-dsh-plugin/pull/8843) — `Add 111222cjyq/dsh-curate`, open, mergeable, awaiting maintainer review |
+| PR contents | exactly one added file: `data/plugins/111222cjyq__dsh-curate.yml` (no README edits — they are regenerated on `main` after merge) |
+| `check` workflow | **pass** (10m 20s): stale-fork guard, path checks, README regeneration parity, `awesome-lint`, entry tests, site build |
+| `Submission gate` workflow | **pass** (26s): repo age, `dsh.bundle` + `cordis.patch.yml`, repo not archived, not a first-party repo |
+| local preflight | entry YAML parsed, README row generated at 6,566 entries, `generate-readme.mjs --check` up to date, `build-site.mjs` built 6,566 rows × 2 locales, `awesome-lint` exit 0 |
+| repo state | `main` at `71adcb1` (`v0.5.2`), working tree clean |

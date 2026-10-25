@@ -290,6 +290,15 @@ test('a changed line is diffed down to the changed token', () => {
   assert.equal(diff.filter((segment) => segment.type === 'insert').map((segment) => segment.text).join(''), '六')
 })
 
+test('a projection-invalidated host error tells the user to restart', () => {
+  const { mod } = loadClient()
+  const text = mod.__internals.hostErrorText(
+    new Error('session message projection "plugin:dsh-curate/patch" was removed or replaced; restore the session with its owning plugin'),
+    'edit',
+  )
+  assert.match(text, /restart dsh web|重启 dsh web/i)
+})
+
 test('markdown matching ignores emphasis markers and unwraps them for display', () => {
   const { mod } = loadClient()
   assert.equal(mod.__internals.matchDisplayText('**1。** 下一句'), mod.__internals.matchDisplayText('1。下一句'))

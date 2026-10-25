@@ -9,6 +9,26 @@ must be reconstructed from the repository history after the first push. The
 0.4.1 entry is dated from the working-tree file timestamps; confirm it against
 the actual release history before publishing.
 
+## [0.7.5] - 2026-10-25
+
+### Fixed
+
+- **Hot reloads no longer invalidate live sessions.** DSH live Sessions remember
+  the exact message-projection object they folded with. Re-registering a fresh
+  object after a plugin reload produced
+  `session message projection "plugin:dsh-curate/patch" was removed or replaced`.
+  The host now caches the projection on `globalThis` and re-registers the same
+  object after a reload; a race with an existing registration reuses it too.
+- The workbench localizes that host error into an actionable message: a full
+  `dsh web` restart is needed only for sessions that were already invalidated
+  before this cache existed; local drafts are preserved.
+
+### Notes
+
+- Sessions broken by earlier hot reloads cannot be repaired in-process: restart
+  `dsh web` once. Do not just disable/enable the plugin.
+- New client test for the error mapping; the full suite is 137 tests.
+
 ## [0.7.4] - 2026-10-25
 
 ### Changed

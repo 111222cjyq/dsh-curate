@@ -263,6 +263,7 @@ window.__ModuleLoader__.load({
       'error.patchUnavailable': '当前宿主不支持就地修改非用户消息，请重启 DSH web 并硬刷新页面。',
       'error.unsupported': '当前宿主不支持这项写入，请升级或重启 DSH web。',
       'error.invalidRange': '压缩范围无效，请刷新后重新选择。',
+      'error.projectionStale': '插件热更新后，当前会话的消息投影已失效。请重启 dsh web 后重新打开该会话（本地草稿仍保留），再重新应用修改。',
       'error.sessionNotActive': '这条会话当前没有打开，无法写入。',
       'error.cancelled': '官方压缩已取消，会话没有被修改。',
       'error.compactionSummary': '官方压缩没有生成有效摘要，会话没有被修改。',
@@ -500,6 +501,7 @@ window.__ModuleLoader__.load({
       'error.patchUnavailable': 'This host cannot patch non-user messages in place; restart DSH web and hard-refresh the page.',
       'error.unsupported': 'This host does not support that write; upgrade or restart DSH web.',
       'error.invalidRange': 'That compression range is invalid; refresh and select again.',
+      'error.projectionStale': 'The plugin was hot-reloaded and this session\'s message projection is stale. Restart dsh web, reopen the session (the local draft is kept), then apply again.',
       'error.sessionNotActive': 'This session is not open, so nothing can be written.',
       'error.cancelled': 'Official /compact was cancelled; the session is unchanged.',
       'error.compactionSummary': 'Official /compact produced no valid summary; the session is unchanged.',
@@ -552,6 +554,8 @@ window.__ModuleLoader__.load({
       const code = error && typeof error.code === 'string' ? error.code : ''
       if (code === 'busy') return tr(context === 'edit' ? 'edit.busy' : 'panel.busy')
       if (code === 'stale') return tr(context === 'edit' ? 'edit.stale' : 'apply.stale')
+      const message = error && typeof error.message === 'string' ? error.message : ''
+      if (/message projection .* was removed or replaced/i.test(message)) return tr('error.projectionStale')
       const keys = {
         'confirm-required': 'error.confirmRequired',
         'tool-pair': 'error.toolPair',

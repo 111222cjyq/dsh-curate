@@ -9,6 +9,24 @@ must be reconstructed from the repository history after the first push. The
 0.4.1 entry is dated from the working-tree file timestamps; confirm it against
 the actual release history before publishing.
 
+## [0.7.6] - 2026-10-25
+
+### Fixed
+
+- **The “已修改” badge no longer covers transcript text.** Changed rows reserve
+  right-hand padding for the absolutely positioned badge, so the badge sits in
+  its own gutter instead of overlapping the end of the first line (mobile keeps
+  a narrower gutter).
+- **The editor no longer repeats its title.** The duplicate “编辑用户消息 /
+  Edit your message” label above the source/rendered switch was removed; the
+  editor header still names the message, and the switch row uses the generic
+  block label.
+
+### Tests
+
+- The client render test covers the editor header actions; the full suite is
+  137 tests.
+
 ## [0.7.5] - 2026-10-25
 
 ### Fixed

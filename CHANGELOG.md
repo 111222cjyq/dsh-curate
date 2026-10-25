@@ -9,6 +9,28 @@ must be reconstructed from the repository history after the first push. The
 0.4.1 entry is dated from the working-tree file timestamps; confirm it against
 the actual release history before publishing.
 
+## [0.7.1] - 2026-10-25
+
+### Added
+
+- **Inline change marks.** The applied transcript now highlights the exact
+  added/rewritten fragments instead of only marking the whole message. A pure
+  deletion is shown as a small “原文删除 N 字” note; a replacement shows only
+  the new text with the new word highlighted (no old/new text glued together).
+- The “已修改” badge now includes the changed-part count (`已修改 · N 处`), and
+  the detail dialog has a third **改动 / Changes** view with highlighted new
+  text, struck-through old text and a legend.
+- 3 new client diff tests (line/token LCS, multi-change counts, pure deletion
+  note); the full suite is 136 tests.
+
+### Changed
+
+- Inline diff uses line-level LCS followed by token-level LCS; whitespace-only
+  and indentation-only runs are ignored so formatting noise does not inflate
+  the count. Very large rewrites fall back to a cheap common-prefix/suffix diff.
+- The inline view intentionally shows only the applied version (deletions are
+  summarized); the exact before/after comparison remains in the dialog.
+
 ## [0.7.0] - 2026-10-25
 
 ### Added

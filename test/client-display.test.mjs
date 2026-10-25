@@ -84,10 +84,16 @@ test('applied mode replaces edited text, adds one badge per message and is idemp
     onOpen: (sessionId, seqs) => opened.push([sessionId, seqs]),
   })
   assert.deepEqual(first, { rows: 2, elements: 2, badges: 2 })
-  assert.equal(win.document.querySelector('.assistant-body').textContent, 'patched answer', 'display unwraps Markdown markers')
+  const assistant = win.document.querySelector('.assistant-body')
+  assert.equal(assistant.querySelector('mark.dshcurate-inline-add').textContent, 'patched')
+  assert.equal(assistant.querySelector('del.dshcurate-inline-del'), null,
+    'a replacement shows the applied word marked, not old and new glued together')
+  assert.equal(assistant.textContent, 'patched answer')
+  assert.equal(win.document.querySelector('.user-bubble mark.dshcurate-inline-add').textContent, 'patched')
   assert.equal(win.document.querySelector('.user-bubble').textContent, 'patched prompt')
   assert.equal(win.document.querySelectorAll('.dshcurate-edited-badge').length, 2)
   assert.match(win.document.querySelector('.dshcurate-edited-badge').textContent, /已修改|Edited/)
+  assert.match(win.document.querySelector('.dshcurate-edited-badge').textContent, /1/)
   assert.equal(win.document.querySelectorAll('.dshcurate-changed-row').length, 2)
   assert.equal(win.document.querySelector('[data-chat-flow-kind="turn-tail"] .dshcurate-edited-badge'), null,
     'the turn tail is not a message row')
@@ -114,15 +120,16 @@ test('original mode restores the host HTML while keeping the badges', () => {
   chatDom(win)
   const options = { document: win.document, sessionId: 'session-display-2', snapshot: snapshotFixture(), changes: CHANGES }
   mod.__internals.applyChatDisplay({ ...options, mode: 'applied' })
-  assert.equal(win.document.querySelector('.assistant-body').textContent, 'patched answer', 'display unwraps Markdown markers')
+  assert.ok(win.document.querySelector('.assistant-body mark.dshcurate-inline-add'))
 
   mod.__internals.applyChatDisplay({ ...options, mode: 'original' })
-  assert.equal(win.document.querySelector('.assistant-body').textContent, 'original answer')
-  assert.equal(win.document.querySelector('.user-bubble').textContent, 'original prompt')
+  assert.equal(win.document.querySelector('.assistant-body').innerHTML, '<p>original answer</p>')
+  assert.equal(win.document.querySelector('.user-bubble').innerHTML, '<p>original prompt</p>')
+  assert.equal(win.document.querySelectorAll('.dshcurate-inline-add, .dshcurate-inline-del-note').length, 0)
   assert.equal(win.document.querySelectorAll('.dshcurate-edited-badge').length, 2)
 
   mod.__internals.applyChatDisplay({ ...options, mode: 'applied' })
-  assert.equal(win.document.querySelector('.assistant-body').textContent, 'patched answer', 'display unwraps Markdown markers')
+  assert.ok(win.document.querySelector('.assistant-body mark.dshcurate-inline-add'))
   assert.equal(win.document.querySelectorAll('.dshcurate-edited-badge').length, 2)
 })
 
@@ -184,6 +191,31 @@ test('an appended reply without original text still gets the badge and modal dat
     'no original anchor: inline replacement stays off, the dialog/badge still works')
 })
 
+test('a pure deletion leaves a visible note in the applied text', () => {
+  const { win, mod } = loadClient()
+  chatDom(win)
+  win.document.querySelector('.assistant-body').innerHTML = '<p>keep this and remove the tail</p>'
+  mod.__internals.applyChatDisplay({
+    document: win.document,
+    sessionId: 'session-display-delete',
+    snapshot: snapshotFixture(),
+    changes: [{
+      seq: 18,
+      messageId: 'a1',
+      role: 'assistant',
+      kind: 'reply',
+      blocks: [{ blockIndex: 1, blockKind: 'text', original: 'keep this and remove the tail', applied: 'keep this' }],
+    }],
+    mode: 'applied',
+  })
+  const row = win.document.querySelector('.assistant-body')
+  assert.equal(row.textContent.includes('keep this'), true)
+  assert.equal(row.textContent.includes('remove the tail'), false)
+  const note = row.querySelector('.dshcurate-inline-del-note')
+  assert.ok(note, 'deleted-only text is summarized instead of rendered inline')
+  assert.match(note.textContent, /\d+/)
+})
+
 test('seqsForNode maps every chat row kind the wrapper can decorate', () => {
   const { mod } = loadClient()
   const seqs = mod.__internals.seqsForNode
@@ -224,7 +256,38 @@ test('ChangeToggle and ChangeDetail render the count and the applied full text',
   assert.match(html, /写入上下文|In context/)
   assert.match(html, /原文|Original/)
   assert.match(html, /复制全文|Copy full text/)
+  assert.match(html, /改动|Changes/)
   mod.__internals.closeChangeDetail()
+})
+
+test('computeInlineDiff marks only the changed runs and keeps both sides', () => {
+  const { mod } = loadClient()
+  const diff = mod.__internals.computeInlineDiff('凌晨三点，天色很暗。', '凌晨六点，天色很暗。')
+  assert.equal(diff.filter((segment) => segment.type === 'delete').map((segment) => segment.text).join(''), '三')
+  assert.equal(diff.filter((segment) => segment.type === 'insert').map((segment) => segment.text).join(''), '六')
+  assert.equal(diff.filter((segment) => segment.type === 'equal').map((segment) => segment.text).join(''), '凌晨点，天色很暗。')
+  assert.equal(mod.__internals.countDiffHunks(diff), 1)
+
+  const multiple = mod.__internals.computeInlineDiff('甲一乙二丙', '甲三乙四丙')
+  assert.equal(mod.__internals.countDiffHunks(multiple), 2)
+  assert.equal(multiple.filter((segment) => segment.type === 'insert').map((segment) => segment.text).join(''), '三四')
+
+  assert.equal(mod.__internals.countDiffHunks(mod.__internals.computeInlineDiff('a\n  b\n', 'a\n    b\n')), 0,
+    'indentation-only changes are formatting noise, not counted edits')
+  assert.deepEqual(mod.__internals.computeInlineDiff('same', 'same'), [{ type: 'equal', text: 'same' }])
+  assert.deepEqual(mod.__internals.computeInlineDiff('', 'added'), [{ type: 'insert', text: 'added' }])
+  assert.deepEqual(mod.__internals.computeInlineDiff('removed', ''), [{ type: 'delete', text: 'removed' }])
+})
+
+test('a changed line is diffed down to the changed token', () => {
+  const { mod } = loadClient()
+  const before = '第一段\n很久以前，有个写小说的人习惯在凌晨三点写东西。\n第三段'
+  const after = '第一段\n很久以前，有个写小说的人习惯在凌晨六点写东西。\n第三段'
+  const diff = mod.__internals.computeInlineDiff(before, after)
+  assert.equal(mod.__internals.countDiffHunks(diff), 1)
+  assert.match(diff.map((segment) => segment.text).join(''), /凌晨/)
+  assert.equal(diff.filter((segment) => segment.type === 'delete').map((segment) => segment.text).join(''), '三')
+  assert.equal(diff.filter((segment) => segment.type === 'insert').map((segment) => segment.text).join(''), '六')
 })
 
 test('markdown matching ignores emphasis markers and unwraps them for display', () => {

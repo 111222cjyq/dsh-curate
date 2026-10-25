@@ -4,8 +4,8 @@
 It lists the model-visible session as turns, lets you mark whole turns or single
 messages **Important** (keep verbatim) / **Default** (summarize normally) / **Minor** (drop outright) and
 rewrite user, assistant, tool-result and injected-context messages in place
-without a model call, shows the applied edits in the real transcript (with an
-Edited marker and an Original/Applied switch), then compresses the marked ranges
+without a model call, shows the applied edits in the real transcript (changed
+fragments highlighted, an Edited marker and an Original/Applied switch), then compresses the marked ranges
 (Default blocks are replaced by model-written summaries, Minor blocks are
 dropped) or runs the official `/compact`. Every write is preceded by a local JSON
 backup. Install with `dsh plugin --profile web add github:111222cjyq/dsh-curate`,
@@ -60,17 +60,18 @@ DSH 自带的 `compaction-basic` 是“到阈值自动压”。这个插件的�
 - **压缩摘要只看对话文本**：单独开关。开启后「默认」段生成摘要时只读取用户/助手的 text 块，工具输出、注入上下文、思维链不进入摘要；关闭时保持全文摘要。「次要」段始终直接丢弃，不受该开关影响。
 - **分组统计**：仅文本模式下卡片只统计可见的 user/assistant 条数与 tokens，并显示「已隐藏 N 条工具/上下文」；压缩仍覆盖整段，除非开启压缩摘要只看对话文本。
 
-## 真实对话中的修改显示（0.7.0）
+## 真实对话中的修改显示（0.7.0 起，0.7.1 增加逐处高亮）
 
 写入上下文之后，dsh-curate 会把真实 Chat 里的被修改消息**就地显示成实际写入的文本**，不再只在工作台里可见：
 
 - **默认显示修改后内容**：打开有修改的会话时，Chat 中显示「写入上下文」的版本；标题旁出现「修改后 N / 原文 N」开关，可随时切回原始对话。偏好保存在浏览器本地，只影响显示，不写入会话。
-- **已修改标记**：每条被修改的消息右上角都有「已修改」小标签（点击打开详情）；同一行有多条修改时显示「已修改 ×N」。
-- **查看完整全文**：详情层可以在「原文」与「写入上下文」之间切换，并显示对应版本的完整文本（不截断、不省略），支持「复制全文」。
+- **逐处高亮**：写入上下文的正文里，新增/改写的词句会直接高亮；纯删除的位置显示「原文删除 N 字」提示。替换位置只显示新文本并高亮，不会把旧词和新词并排显示。
+- **已修改标记**：每条被修改的消息右上角都有「已修改 · N 处」小标签（点击打开详情），N 是正文中检测到的改动处数；同一行有多条修改时累加。
+- **查看完整全文**：详情层可以在「原文」「写入上下文」「改动」三种视图间切换；「改动」视图用高亮/删除线展示被替换的旧词和新词，并附配色说明，支持「复制全文」。
 - **覆盖范围**：用户提问（prompt replacement）、AI 回答、思维链、工具结果、注入上下文、以及没有正文的追加补丁（append）都会产生标记；无法在 DOM 里定位正文的折叠消息仍保留标记和全文详情。
 - **不写会话**：显示层只读取 `GET /dsh-curate/changes`，不发送任何 POST；关闭插件或刷新页面会恢复宿主原始 HTML。
 
-已知限制：内联替换使用纯文本（保留换行，避免把 `**加粗**` 这类 Markdown 标记原样显示），可能丢失代码块/表格排版；全文详情保留原始文本。宿主自带的「复制」仍复制原始消息；需要复制写入内容时用详情层的「复制全文」。压缩摘要的 Chat 展示暂不在 0.7.0 范围内。
+已知限制：内联替换使用纯文本（保留换行，避免把 `**加粗**` 这类 Markdown 标记原样显示），可能丢失代码块/表格排版；全文详情保留原始文本。内联视图只显示写入后的文本（删除内容以提示代替），完整前后对照要看详情层的「改动」视图。宿主自带的「复制」仍复制原始消息；需要复制写入内容时用详情层的「复制全文」。压缩摘要的 Chat 展示暂不在 0.7.x 范围内。
 
 ## 压缩上下文
 
@@ -124,6 +125,8 @@ dsh plugin --profile web add "$PWD"
 **0.6.0**：修复「查看完整内容 / 编辑」打开时的 `Cannot access 'truncated' before initialization` 500；语气改为「重要 / 默认 / 次要」，默认=常规摘要、次要=直接丢弃（不生成摘要）；按钮补全悬停说明；确认弹窗区分摘要段与丢弃段；新增真实 DSH 会话折叠测试，证明压缩、丢弃和编辑确实进入模型上下文。
 
 **0.7.0**：真实 Chat 直接显示写入上下文后的文本，每条修改旁有「已修改」标记，标题旁可在「修改后 / 原文」间切换；点标记可查看原文与写入上下文的完整全文（含复制）。显示层只改浏览器显示，不写会话；内联纯文本可能丢失 Markdown 排版，详情层保留完整原文。
+
+**0.7.1**：在 0.7.0 的真实对话显示上加入**逐处高亮**：写入后的正文里直接标出新增/改写的词句，纯删除显示「原文删除 N 字」提示；「已修改」标记显示改动处数；详情层新增「改动」视图（高亮新文本 + 删除线旧文本 + 图例）。diff 按行 LCS + token LCS 计算，忽略纯空白/缩进噪音；大段改写自动降级，避免卡顿。
 
 ## 使用
 

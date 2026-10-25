@@ -149,7 +149,14 @@ window.__ModuleLoader__.load({
       'detail.toolCall': '工具调用',
       'display.badge': '已修改',
       'display.badge.count': '已修改 ×{count}',
-      'display.badge.title': '已修改：点击查看原文与写入上下文的全文。',
+      'display.badge.parts': '已修改 · {count} 处',
+      'display.badge.title': '已修改：正文中高亮标出改动位置；点击查看原文与写入上下文的全文。',
+      'display.mark.added': '写入上下文的新内容',
+      'display.mark.deleted': '原文中被替换或删除的内容',
+      'display.mark.deletedCount': '〔原文删除 {count} 字〕',
+      'display.view.diff': '改动',
+      'display.dialog.changes': '{count} 处改动',
+      'display.legend': '高亮 = 写入上下文的新内容；删除线 = 原文中被替换的部分。',
       'display.toggle.applied': '修改后 {count}',
       'display.toggle.original': '原文 {count}',
       'display.toggle.title': '切换真实对话显示：修改后内容 / 原始内容。只影响显示，不写入会话。',
@@ -375,7 +382,14 @@ window.__ModuleLoader__.load({
       'detail.toolCall': 'Tool call',
       'display.badge': 'Edited',
       'display.badge.count': 'Edited ×{count}',
-      'display.badge.title': 'Edited: click to compare the original with the full text written into context.',
+      'display.badge.parts': 'Edited · {count}',
+      'display.badge.title': 'Edited: changed parts are highlighted in the message; click to compare the original with the full text written into context.',
+      'display.mark.added': 'New content written into context',
+      'display.mark.deleted': 'Original text replaced or removed',
+      'display.mark.deletedCount': '[removed {count} chars]',
+      'display.view.diff': 'Changes',
+      'display.dialog.changes': '{count} change(s)',
+      'display.legend': 'Highlight = new applied text; strikethrough = removed original.',
       'display.toggle.applied': 'Applied {count}',
       'display.toggle.original': 'Original {count}',
       'display.toggle.title': 'Switch the real transcript between applied content and the original. Display only; nothing is written to the session.',
@@ -1168,7 +1182,7 @@ window.__ModuleLoader__.load({
     function displayStoreFor(sessionId) {
       let store = displayStores.get(sessionId)
       if (store === undefined) {
-        store = { elements: new Map(), badges: new Map(), rows: new Set() }
+        store = { elements: new Map(), badges: new Map(), rows: new Set(), diffs: new Map() }
         displayStores.set(sessionId, store)
       }
       return store
@@ -1196,6 +1210,284 @@ window.__ModuleLoader__.load({
         .replace(/__([^_]+)__/g, '$1')
         .replace(/^#{1,6}\s+/gm, '')
     }
+    // --- inline diff -----------------------------------------------------------
+
+    // The editor records the whole block text, but the reader needs to see which
+    // words changed. This is a small line-then-token LCS: line-level LCS keeps
+    // the work proportional to the number of lines, and token-level LCS runs only
+    // on the changed line pairs. Long/rewritten blocks fall back to a cheap
+    // common-prefix/suffix diff so a huge paste cannot freeze the transcript.
+    const DIFF_LINE_BUDGET = 400_000
+    const DIFF_TOKEN_BUDGET = 200_000
+    const DIFF_MAX_SEGMENTS = 600
+    const DIFF_MAX_INLINE_DELETE = 48
+    const DIFF_MAX_INLINE_MARKS = 240
+
+    function splitDiffLines(value) {
+      const text = String(value === null || value === undefined ? '' : value)
+      if (text === '') return []
+      const lines = text.match(/[^\n]*\n|[^\n]+$/g)
+      return lines === null ? [] : lines
+    }
+    function tokenizeDiff(value) {
+      const text = String(value === null || value === undefined ? '' : value)
+      const out = []
+      const re = /(\s+|[A-Za-z0-9_]+|[\u4e00-\u9fff]|[^\s])/gu
+      let match
+      while ((match = re.exec(text)) !== null) out.push(match[0])
+      return out
+    }
+    function pushDiffSegment(segments, type, text) {
+      if (text === '') return
+      const last = segments[segments.length - 1]
+      if (last && last.type === type) last.text += text
+      else segments.push({ type, text })
+    }
+    function simpleInlineDiff(before, after) {
+      let prefix = 0
+      while (prefix < before.length && prefix < after.length && before[prefix] === after[prefix]) prefix += 1
+      let suffix = 0
+      while (
+        suffix < before.length - prefix &&
+        suffix < after.length - prefix &&
+        before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
+      ) suffix += 1
+      const segments = []
+      if (prefix > 0) pushDiffSegment(segments, 'equal', before.slice(0, prefix))
+      if (before.length - prefix - suffix > 0) {
+        pushDiffSegment(segments, 'delete', before.slice(prefix, before.length - suffix))
+      }
+      if (after.length - prefix - suffix > 0) {
+        pushDiffSegment(segments, 'insert', after.slice(prefix, after.length - suffix))
+      }
+      if (suffix > 0) pushDiffSegment(segments, 'equal', before.slice(before.length - suffix))
+      return segments
+    }
+    function diffTokens(beforeTokens, afterTokens) {
+      const n = beforeTokens.length
+      const m = afterTokens.length
+      if (n === 0 && m === 0) return []
+      if (n === 0) return [{ type: 'insert', text: afterTokens.join('') }]
+      if (m === 0) return [{ type: 'delete', text: beforeTokens.join('') }]
+      if (n * m > DIFF_TOKEN_BUDGET) return simpleInlineDiff(beforeTokens.join(''), afterTokens.join(''))
+      const width = m + 1
+      const dp = new Uint32Array((n + 1) * width)
+      for (let i = n - 1; i >= 0; i -= 1) {
+        for (let j = m - 1; j >= 0; j -= 1) {
+          dp[i * width + j] = beforeTokens[i] === afterTokens[j]
+            ? dp[(i + 1) * width + (j + 1)] + 1
+            : Math.max(dp[(i + 1) * width + j], dp[i * width + (j + 1)])
+        }
+      }
+      const segments = []
+      let i = 0
+      let j = 0
+      while (i < n && j < m) {
+        if (beforeTokens[i] === afterTokens[j]) {
+          pushDiffSegment(segments, 'equal', beforeTokens[i])
+          i += 1
+          j += 1
+        } else if (dp[(i + 1) * width + j] >= dp[i * width + (j + 1)]) {
+          pushDiffSegment(segments, 'delete', beforeTokens[i])
+          i += 1
+        } else {
+          pushDiffSegment(segments, 'insert', afterTokens[j])
+          j += 1
+        }
+      }
+      while (i < n) {
+        pushDiffSegment(segments, 'delete', beforeTokens[i])
+        i += 1
+      }
+      while (j < m) {
+        pushDiffSegment(segments, 'insert', afterTokens[j])
+        j += 1
+      }
+      return segments
+    }
+    /**
+     * Segment-level diff for one edited block: equal runs stay as text, changed
+     * tokens become `insert` / `delete` runs. Pure function, exported for tests.
+     */
+    function computeInlineDiff(beforeValue, afterValue) {
+      const before = String(beforeValue === null || beforeValue === undefined ? '' : beforeValue)
+      const after = String(afterValue === null || afterValue === undefined ? '' : afterValue)
+      if (before === after) return before === '' ? [] : [{ type: 'equal', text: after }]
+      if (before === '') return [{ type: 'insert', text: after }]
+      if (after === '') return [{ type: 'delete', text: before }]
+      const beforeLines = splitDiffLines(before)
+      const afterLines = splitDiffLines(after)
+      if (
+        beforeLines.length * afterLines.length > DIFF_LINE_BUDGET ||
+        beforeLines.length > 2_000 ||
+        afterLines.length > 2_000
+      ) return normalizeDiffSegments(simpleInlineDiff(before, after))
+      const n = beforeLines.length
+      const m = afterLines.length
+      const width = m + 1
+      const dp = new Uint32Array((n + 1) * width)
+      for (let i = n - 1; i >= 0; i -= 1) {
+        for (let j = m - 1; j >= 0; j -= 1) {
+          dp[i * width + j] = beforeLines[i] === afterLines[j]
+            ? dp[(i + 1) * width + (j + 1)] + 1
+            : Math.max(dp[(i + 1) * width + j], dp[i * width + (j + 1)])
+        }
+      }
+      const ops = []
+      let i = 0
+      let j = 0
+      while (i < n && j < m) {
+        if (beforeLines[i] === afterLines[j]) {
+          ops.push({ type: 'equal', text: beforeLines[i] })
+          i += 1
+          j += 1
+        } else if (dp[(i + 1) * width + j] >= dp[i * width + (j + 1)]) {
+          ops.push({ type: 'delete', text: beforeLines[i] })
+          i += 1
+        } else {
+          ops.push({ type: 'insert', text: afterLines[j] })
+          j += 1
+        }
+      }
+      while (i < n) {
+        ops.push({ type: 'delete', text: beforeLines[i] })
+        i += 1
+      }
+      while (j < m) {
+        ops.push({ type: 'insert', text: afterLines[j] })
+        j += 1
+      }
+      const segments = []
+      let hunk = null
+      const flushHunk = () => {
+        if (hunk === null) return
+        const paired = Math.min(hunk.deletes.length, hunk.inserts.length)
+        for (let k = 0; k < paired; k += 1) {
+          const lineDiff = diffTokens(tokenizeDiff(hunk.deletes[k]), tokenizeDiff(hunk.inserts[k]))
+          for (const segment of lineDiff) pushDiffSegment(segments, segment.type, segment.text)
+        }
+        for (let k = paired; k < hunk.deletes.length; k += 1) {
+          pushDiffSegment(segments, 'delete', hunk.deletes[k])
+        }
+        for (let k = paired; k < hunk.inserts.length; k += 1) {
+          pushDiffSegment(segments, 'insert', hunk.inserts[k])
+        }
+        hunk = null
+      }
+      for (const op of ops) {
+        if (op.type === 'equal') {
+          flushHunk()
+          pushDiffSegment(segments, 'equal', op.text)
+        } else {
+          if (hunk === null) hunk = { deletes: [], inserts: [] }
+          if (op.type === 'delete') hunk.deletes.push(op.text)
+          else hunk.inserts.push(op.text)
+        }
+      }
+      flushHunk()
+      const normalized = normalizeDiffSegments(segments)
+      if (normalized.length > DIFF_MAX_SEGMENTS) return normalizeDiffSegments(simpleInlineDiff(before, after))
+      return normalized
+    }
+    function normalizeDiffSegments(segments) {
+      // Whitespace-only runs (indentation, trailing spaces, blank lines) are
+      // formatting noise, not "changed words". Deleted whitespace is dropped;
+      // inserted whitespace is kept as equal text so the applied layout still
+      // renders, but neither shows up as a change mark or a badge count.
+      const out = []
+      for (const segment of Array.isArray(segments) ? segments : []) {
+        if (segment === null || typeof segment !== 'object' || segment.text === '') continue
+        if (segment.type === 'delete' && segment.text.trim() === '') continue
+        if (segment.type === 'insert' && segment.text.trim() === '') {
+          pushDiffSegment(out, 'equal', segment.text)
+          continue
+        }
+        pushDiffSegment(out, segment.type, segment.text)
+      }
+      return out
+    }
+    function countDiffHunks(segments) {
+      let count = 0
+      let inChange = false
+      for (const segment of Array.isArray(segments) ? segments : []) {
+        if (segment.type === 'equal') inChange = false
+        else if (!inChange) {
+          count += 1
+          inChange = true
+        }
+      }
+      return count
+    }
+    function diffForBlock(store, key, block) {
+      const before = displayTextForChat(block === null || block === undefined ? '' : block.original)
+      const after = displayTextForChat(block === null || block === undefined ? '' : block.applied)
+      let entry = store.diffs.get(key)
+      if (entry === undefined || entry.before !== before || entry.after !== after) {
+        const segments = computeInlineDiff(before, after)
+        entry = { before, after, segments, hunks: countDiffHunks(segments) }
+        store.diffs.set(key, entry)
+      }
+      return entry
+    }
+    function changePartCount(store, change) {
+      let count = 0
+      for (const block of Array.isArray(change.blocks) ? change.blocks : []) {
+        if (!block || typeof block !== 'object') continue
+        count += diffForBlock(store, `${change.seq}:${block.blockIndex}`, block).hunks
+      }
+      return count
+    }
+    function createDiffFragment(doc, segments) {
+      const fragment = doc.createDocumentFragment()
+      let marks = 0
+      const addText = (text) => {
+        if (text !== '') fragment.appendChild(doc.createTextNode(text))
+      }
+      const list = Array.isArray(segments) ? segments : []
+      for (let index = 0; index < list.length; index += 1) {
+        const segment = list[index]
+        if (segment === null || typeof segment !== 'object' || segment.text === '') continue
+        if (segment.type === 'equal') {
+          addText(segment.text)
+          continue
+        }
+        if (segment.type === 'insert') {
+          if (marks >= DIFF_MAX_INLINE_MARKS) {
+            addText(segment.text)
+            continue
+          }
+          const mark = doc.createElement('mark')
+          mark.className = 'dshcurate-inline-add'
+          mark.setAttribute('data-dshcurate-inline', 'add')
+          mark.setAttribute('title', tr('display.mark.added'))
+          mark.textContent = segment.text
+          fragment.appendChild(mark)
+          marks += 1
+          continue
+        }
+        // A replacement is delete+insert; the applied text already shows the new
+        // word marked above. Only a deletion with no new counterpart needs a
+        // visible note, so the transcript never displays both old and new text
+        // glued together ("凌晨三六点"). The full old text stays in the dialog.
+        const previous = list[index - 1]
+        const next = list[index + 1]
+        const paired = (previous && previous.type === 'insert') || (next && next.type === 'insert')
+        if (paired) continue
+        const note = doc.createElement('span')
+        note.className = 'dshcurate-inline-del-note'
+        note.setAttribute('data-dshcurate-inline', 'delete')
+        note.setAttribute('title', segment.text.slice(0, 500))
+        note.textContent = tr('display.mark.deletedCount', { count: segment.text.length })
+        fragment.appendChild(note)
+      }
+      return fragment
+    }
+    function renderDiffInto(target, segments) {
+      const doc = target.ownerDocument
+      target.textContent = ''
+      target.appendChild(createDiffFragment(doc, segments))
+    }
+
     function seqsForNode(node) {
       if (node === null || node === undefined) return []
       const data = node.data && typeof node.data === 'object' ? node.data : {}
@@ -1385,21 +1677,34 @@ window.__ModuleLoader__.load({
           if (!block || typeof block !== 'object') continue
           if (block.append === true && block.original === '') continue
           const key = `${change.seq}:${block.blockIndex}`
+          const diff = diffForBlock(store, key, block)
+          const signature = `${diff.before}\u0000${diff.after}`
           const existing = store.elements.get(key)
-          if (existing && existing.el && existing.el.isConnected && row.contains(existing.el)) {
-            const appliedText = displayTextForChat(block.applied)
-            if (existing.el.textContent !== appliedText) existing.el.textContent = appliedText
-            existing.el.setAttribute(APPLIED_ATTR, key)
-            existing.el.style.whiteSpace = 'pre-wrap'
-            continue
+          if (
+            existing &&
+            existing.el &&
+            existing.el.isConnected &&
+            row.contains(existing.el) &&
+            existing.el.getAttribute(APPLIED_ATTR) === key &&
+            existing.signature === signature &&
+            existing.el.textContent === existing.renderedText
+          ) continue
+          if (existing) {
+            restoreDisplayElement(existing)
+            store.elements.delete(key)
           }
-          if (existing) store.elements.delete(key)
           const target = findDisplayTarget(row, block.original)
           if (target === null) continue
-          const saved = { el: target, html: target.innerHTML, whiteSpace: target.style.whiteSpace }
-          target.textContent = displayTextForChat(block.applied)
+          const saved = {
+            el: target,
+            html: target.innerHTML,
+            whiteSpace: target.style.whiteSpace,
+            signature,
+          }
+          renderDiffInto(target, diff.segments)
           target.setAttribute(APPLIED_ATTR, key)
           target.style.whiteSpace = 'pre-wrap'
+          saved.renderedText = target.textContent
           store.elements.set(key, saved)
         }
       }
@@ -1443,7 +1748,14 @@ window.__ModuleLoader__.load({
           store.rows.add(row)
         }
         const seqs = [...seqSet]
-        const label = seqs.length > 1 ? tr('display.badge.count', { count: seqs.length }) : tr('display.badge')
+        let partCount = 0
+        for (const seq of seqs) {
+          const change = changeBySeq.get(seq)
+          if (change) partCount += changePartCount(store, change)
+        }
+        const label = partCount > 0
+          ? tr('display.badge.parts', { count: partCount })
+          : (seqs.length > 1 ? tr('display.badge.count', { count: seqs.length }) : tr('display.badge'))
         if (badge.button.textContent !== label) badge.button.textContent = label
         badge.button.setAttribute('title', tr('display.badge.title'))
         badge.button.setAttribute('aria-label', tr('display.badge.title'))
@@ -1629,6 +1941,13 @@ window.__ModuleLoader__.load({
         .dshcurate-changed-row{position:relative}
         .dshcurate-edited-badge{position:absolute;top:4px;right:8px;z-index:6;display:inline-flex;align-items:center;height:19px;padding:0 7px;border:1px solid var(--dsw-alias-border-l2,#d9d9d9);border-radius:999px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-secondary,#666);font-size:10.5px;line-height:1;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.06);opacity:.94}
         .dshcurate-edited-badge:hover{color:var(--dsw-alias-label-primary,#222);border-color:var(--dsw-alias-state-success-primary,#3a8a3a);opacity:1}
+        .dshcurate-inline-add{background:var(--dsw-alias-state-warning-bg,rgba(255,193,7,.22));color:inherit;border-radius:2px;padding:0 1px;box-decoration-break:clone;-webkit-box-decoration-break:clone}
+        .dshcurate-inline-del{color:var(--dsw-alias-label-tertiary,#888);background:rgba(220,90,90,.10);text-decoration:line-through;border-radius:2px;padding:0 1px;opacity:.9}
+        .dshcurate-inline-del-note{display:inline;margin:0 2px;padding:0 3px;border:1px dashed var(--dsw-alias-border-l2,#d9d9d9);border-radius:3px;color:var(--dsw-alias-label-tertiary,#888);font-size:.92em;white-space:nowrap}
+        .dshcurate-diff-pre mark{background:var(--dsw-alias-state-warning-bg,rgba(255,193,7,.22));color:inherit;border-radius:2px;padding:0 1px}
+        .dshcurate-diff-pre del{color:var(--dsw-alias-label-tertiary,#888);background:rgba(220,90,90,.10);border-radius:2px;padding:0 1px}
+        .dshcurate-diff-legend{margin:0 16px 6px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary,#888)}
+        .dshcurate-change-count{margin-top:2px;font-size:11px;line-height:1.5;color:var(--dsw-alias-label-tertiary,#888)}
         .dshcurate-change-layer{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--dsw-alias-bg-mask-1,rgba(0,0,0,.38))}
         .dshcurate-change-panel{width:min(760px,94vw);max-height:82vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:12px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#222);box-shadow:0 18px 48px rgba(0,0,0,.22);font-size:13px}
         .dshcurate-change-head{display:flex;align-items:flex-start;gap:12px;padding:12px 16px 10px;border-bottom:1px solid var(--dsw-alias-border-l2,#e8e8e8)}
@@ -3993,10 +4312,15 @@ window.__ModuleLoader__.load({
       if (detail.sessionId !== sessionId || flat.length === 0) return null
       const current = flat[Math.min(active, flat.length - 1)]
       const block = current.block || {}
-      const text = view === 'original' ? String(block.original || '') : String(block.applied || '')
+      const beforeText = displayTextForChat(block.original)
+      const afterText = displayTextForChat(block.applied)
+      const diffSegments = computeInlineDiff(beforeText, afterText)
+      const hunks = countDiffHunks(diffSegments)
+      const effectiveView = view === 'diff' && hunks === 0 ? 'applied' : view
+      const text = effectiveView === 'original' ? String(block.original || '') : String(block.applied || '')
       const copy = async () => {
         try {
-          await navigator.clipboard.writeText(text)
+          await navigator.clipboard.writeText(effectiveView === 'diff' ? afterText : text)
           setCopied(true)
           setCopyError(false)
           window.setTimeout(() => setCopied(false), 1400)
@@ -4004,6 +4328,29 @@ window.__ModuleLoader__.load({
           setCopyError(true)
         }
       }
+      const diffPre = jsx('pre', {
+        className: 'dshcurate-change-pre dshcurate-diff-pre',
+        children: diffSegments.map((segment, index) => {
+          if (segment.type === 'equal') return jsx(react.Fragment, { children: segment.text }, index)
+          if (segment.type === 'insert') {
+            return jsx('mark', {
+              className: 'dshcurate-inline-add',
+              title: tr('display.mark.added'),
+              children: segment.text,
+            }, index)
+          }
+          return jsx('del', {
+            className: 'dshcurate-inline-del',
+            title: tr('display.mark.deleted'),
+            children: segment.text,
+          }, index)
+        }),
+      })
+      const modeEntries = [
+        ['original', tr('display.view.original')],
+        ['applied', tr('display.view.applied')],
+      ]
+      if (hunks > 0) modeEntries.push(['diff', tr('display.view.diff')])
       return jsx('div', {
         className: 'dshcurate-change-layer',
         role: 'dialog',
@@ -4026,6 +4373,9 @@ window.__ModuleLoader__.load({
                       className: 'dshcurate-change-sub',
                       children: tr('display.dialog.subtitle', { seq: current.change.seq, role: displayRoleLabel(current.change.role) }),
                     }),
+                    hunks > 0
+                      ? jsx('div', { className: 'dshcurate-change-count', children: tr('display.dialog.changes', { count: hunks }) })
+                      : null,
                   ],
                 }),
                 jsx('button', {
@@ -4056,13 +4406,10 @@ window.__ModuleLoader__.load({
               className: 'dshcurate-change-modes',
               role: 'group',
               'aria-label': tr('display.dialog.title'),
-              children: [
-                ['original', tr('display.view.original')],
-                ['applied', tr('display.view.applied')],
-              ].map(([value, label]) => jsx('button', {
+              children: modeEntries.map(([value, label]) => jsx('button', {
                 type: 'button',
-                className: `dshcurate-change-mode${view === value ? ' active' : ''}`,
-                'aria-pressed': view === value ? 'true' : 'false',
+                className: `dshcurate-change-mode${effectiveView === value ? ' active' : ''}`,
+                'aria-pressed': effectiveView === value ? 'true' : 'false',
                 onClick: () => { setView(value); setCopied(false); setCopyError(false) },
                 children: label,
               }, value)),
@@ -4073,7 +4420,12 @@ window.__ModuleLoader__.load({
             copyError
               ? jsx('div', { className: 'dshcurate-note', children: tr('display.copyFailed') })
               : null,
-            jsx('pre', { className: 'dshcurate-change-pre', children: text === '' ? '…' : text }),
+            effectiveView === 'diff'
+              ? jsx('div', { className: 'dshcurate-diff-legend', children: tr('display.legend') })
+              : null,
+            effectiveView === 'diff'
+              ? diffPre
+              : jsx('pre', { className: 'dshcurate-change-pre', children: text === '' ? '…' : text }),
             jsxs('div', {
               className: 'dshcurate-change-foot',
               children: [
@@ -4402,6 +4754,8 @@ window.__ModuleLoader__.load({
       normalizeDisplayText,
       matchDisplayText,
       displayTextForChat,
+      computeInlineDiff,
+      countDiffHunks,
       editKeyFor,
       hostErrorText,
       normalizePreserveTurns,

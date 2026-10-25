@@ -9,6 +9,32 @@ must be reconstructed from the repository history after the first push. The
 0.4.1 entry is dated from the working-tree file timestamps; confirm it against
 the actual release history before publishing.
 
+## [0.7.0] - 2026-10-25
+
+### Added
+
+- **The real Chat transcript now shows the applied text.** A new read-only
+  `GET /dsh-curate/changes` returns every prompt replacement and
+  reply/tool/context patch with both the original and the exact text written
+  into the model context. The browser decorates the matching Chat rows, shows
+  an always-visible “Edited / 已修改” badge, and adds a header switch between
+  the applied and original transcript. Clicking a badge opens the full
+  original/applied text with copy support.
+- **Display-only by design.** The decoration layer tracks and restores every
+  DOM change on session switch, plugin unload and mode toggle; it never writes
+  the session. The switch and modal are localized (Chinese/English), and the
+  preference is stored in `localStorage`.
+- 9 client display tests plus 4 host `/changes` tests; the live read-only check
+  uses an existing patched session (original “凌晨三点”, applied “凌晨六点”)
+  and verifies Chat text, badge, modal toggle and header switch.
+
+### Changed
+
+- The host advertises seven loopback routes (`/changes` added).
+- Inline applied text is shown as plain text with preserved newlines (Markdown
+  markers are unwrapped, not rendered) to keep the exact context text readable;
+  the detail dialog keeps the raw full text.
+
 ## [0.6.0] - 2026-10-25
 
 ### Fixed

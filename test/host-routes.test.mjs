@@ -268,6 +268,143 @@ test('GET /message reports an over-long message as truncated instead of failing'
   assert.equal(body.editReason, 'too-long')
 })
 
+test('GET /changes reports prompt replacements and reply patches with both texts', async () => {
+  const events = surfaceEvents()
+  events.push({
+    seq: 6,
+    type: 'plugin:dsh-curate/patch',
+    data: { version: 1, targets: [{ seq: 3, blockIndex: 0, kind: 'text', text: 'patched hello' }] },
+  })
+  events.push({
+    seq: 7,
+    type: 'user/message',
+    data: {
+      id: 'u1b',
+      role: 'user',
+      source: { kind: 'user', editedBy: 'dsh-curate' },
+      content: [{ type: 'text', text: 'patched hi' }],
+    },
+    surfaceOp: { op: 'replace', startSeq: 2, endSeq: 2 },
+    sourceEventSeqs: [2],
+  })
+  const dispatch = mount({ events })
+  const res = await dispatch('/dsh-curate/changes', makeReq({ url: `/dsh-curate/changes?sessionId=${LIVE_ID}` }))
+  assert.equal(res.status, 200)
+  const body = parse(res)
+  assert.equal(body.version, PACKAGE.version)
+  assert.equal(body.lastSeq, 7)
+  assert.equal(body.changes.length, 2)
+  assert.deepEqual(body.changes.map((change) => [change.seq, change.kind, change.role]), [[2, 'prompt', 'user'], [3, 'reply', 'assistant']])
+  const prompt = body.changes[0]
+  assert.equal(prompt.replacementSeq, 7)
+  assert.equal(prompt.messageId, 'u1')
+  assert.equal(prompt.blocks[0].original, 'hi')
+  assert.equal(prompt.blocks[0].applied, 'patched hi')
+  const reply = body.changes[1]
+  assert.equal(reply.messageId, 'a1')
+  assert.equal(reply.blocks[0].blockIndex, 0)
+  assert.equal(reply.blocks[0].original, 'hello')
+  assert.equal(reply.blocks[0].applied, 'patched hello')
+})
+
+test('GET /changes follows a double prompt edit back to the original row', async () => {
+  const events = surfaceEvents()
+  events.push({
+    seq: 6,
+    type: 'user/message',
+    data: { id: 'u1b', role: 'user', source: { kind: 'user', editedBy: 'dsh-curate' }, content: [{ type: 'text', text: 'first rewrite' }] },
+    surfaceOp: { op: 'replace', startSeq: 2, endSeq: 2 },
+    sourceEventSeqs: [2],
+  })
+  events.push({
+    seq: 7,
+    type: 'user/message',
+    data: { id: 'u1c', role: 'user', source: { kind: 'user', editedBy: 'dsh-curate' }, content: [{ type: 'text', text: 'second rewrite' }] },
+    surfaceOp: { op: 'replace', startSeq: 6, endSeq: 6 },
+    sourceEventSeqs: [6],
+  })
+  const dispatch = mount({ events })
+  const res = await dispatch('/dsh-curate/changes', makeReq({ url: `/dsh-curate/changes?sessionId=${LIVE_ID}` }))
+  assert.equal(res.status, 200)
+  const body = parse(res)
+  assert.equal(body.changes.length, 1)
+  assert.equal(body.changes[0].seq, 2)
+  assert.equal(body.changes[0].replacementSeq, 7)
+  assert.equal(body.changes[0].blocks[0].original, 'hi')
+  assert.equal(body.changes[0].blocks[0].applied, 'second rewrite')
+})
+
+test('GET /changes covers appended replies, tool results and context messages', async () => {
+  const events = [
+    { seq: 0, type: 'turn/start', data: { turn: 1 } },
+    {
+      seq: 1,
+      type: 'assistant/message',
+      data: { turn: 1, step: 1, message: { id: 'a-reasoning', role: 'assistant', content: [{ type: 'reasoning', text: 'internal thought' }] } },
+      surfaceOp: 'append',
+    },
+    {
+      seq: 2,
+      type: 'tool/result',
+      data: { message: { id: 't1', role: 'tool', content: [{ type: 'text', text: 'raw tool output' }] } },
+      surfaceOp: 'append',
+    },
+    {
+      seq: 3,
+      type: 'developer/message',
+      data: { message: { id: 'c1', role: 'developer', content: [{ type: 'text', text: 'raw context' }] } },
+      surfaceOp: 'append',
+    },
+    {
+      seq: 4,
+      type: 'plugin:dsh-curate/patch',
+      data: {
+        version: 1,
+        targets: [
+          { seq: 1, append: true, kind: 'text', text: 'appended answer' },
+          { seq: 2, blockIndex: 0, kind: 'text', text: 'patched tool output' },
+          { seq: 3, blockIndex: 0, kind: 'text', text: 'patched context' },
+        ],
+      },
+    },
+  ]
+  const dispatch = mount({ events })
+  const res = await dispatch('/dsh-curate/changes', makeReq({ url: `/dsh-curate/changes?sessionId=${LIVE_ID}` }))
+  assert.equal(res.status, 200)
+  const changes = parse(res).changes
+  assert.deepEqual(changes.map((change) => [change.seq, change.kind, change.role]), [
+    [1, 'reply', 'assistant'],
+    [2, 'tool', 'tool'],
+    [3, 'context', 'context'],
+  ])
+  assert.equal(changes[0].blocks[0].append, true)
+  assert.equal(changes[0].blocks[0].original, '')
+  assert.equal(changes[0].blocks[0].applied, 'appended answer')
+  assert.equal(changes[1].blocks[0].original, 'raw tool output')
+  assert.equal(changes[1].blocks[0].applied, 'patched tool output')
+  assert.equal(changes[2].blocks[0].original, 'raw context')
+  assert.equal(changes[2].blocks[0].applied, 'patched context')
+})
+
+test('GET /changes returns an empty list for an unedited session and works cold', async () => {
+  const dispatch = mount()
+  const live = await dispatch('/dsh-curate/changes', makeReq({ url: `/dsh-curate/changes?sessionId=${LIVE_ID}` }))
+  assert.equal(live.status, 200)
+  assert.deepEqual(parse(live).changes, [])
+
+  const coldEvents = surfaceEvents()
+  coldEvents.push({
+    seq: 6,
+    type: 'plugin:dsh-curate/patch',
+    data: { version: 1, targets: [{ seq: 3, blockIndex: 0, kind: 'text', text: 'cold patch' }] },
+  })
+  const coldDispatch = mount({ live: false, events: coldEvents })
+  const cold = await coldDispatch('/dsh-curate/changes', makeReq({ url: `/dsh-curate/changes?sessionId=${COLD_ID}` }))
+  assert.equal(cold.status, 200)
+  assert.equal(parse(cold).changes.length, 1)
+  assert.equal(parse(cold).changes[0].blocks[0].applied, 'cold patch')
+})
+
 test('guard rejects non-loopback peers, a foreign Host header and cross-origin requests', async () => {
   const dispatch = mount()
   const remote = makeReq({ url: `/dsh-curate/state?sessionId=${LIVE_ID}` })

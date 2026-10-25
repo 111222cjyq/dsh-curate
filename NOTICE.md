@@ -25,3 +25,7 @@ projects and keep their original attribution:
 - The editable Markdown surface, the "source + rendered" mode switch, and the
   block picker for assistant replies were first built in dsh-edit-turn-panel and
   are reused here. `dsh-curate` 0.4.0 does not import that package at runtime.
+- The Chat-row display decoration and restoration pattern in `src/client.js`
+  (following `data-chat-flow-key`, matching the rendered markdown container,
+  restoring the captured HTML on teardown) is adapted from dsh-edit-turn 0.3.1,
+  Copyright (c) 2025 DDDMUC, MIT License.

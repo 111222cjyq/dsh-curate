@@ -62,6 +62,8 @@ test('client bundle registers a header entry, a modal layer and a right-Sidebar 
   mod.apply(fakeCtx)
   assert.deepEqual(registrations.map((entry) => entry.definition.name), [
     'conversation.session.header.actions',
+    'conversation.session.header.actions',
+    'conversation.input.overlay',
     'conversation.input.overlay',
     'sidebar.right.pane.tab',
     'sidebar.right.pane.tab.title',

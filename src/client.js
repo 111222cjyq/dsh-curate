@@ -2,10 +2,12 @@
 //
 // A header entry opens a full-screen workbench for one Session. The workbench
 // reads the current surface from the host, slices it into turn-sized cards,
-// lets the human triage each card (important / normal / minor) and rewrite any
-// message, then compresses the selected windows: the host asks the model for
-// each replacement summary at compression time. Apply replaces the selected
-// windows in place; the host backs up and validates first.
+// lets the human triage each card (important / default / minor), rewrite any
+// message, and shows the applied edits in the real transcript with an Edited
+// marker and an Original/Applied switch. It then compresses the selected
+// windows: the host asks the model for each replacement summary at compression
+// time. Apply replaces the selected windows in place; the host backs up and
+// validates first.
 //
 // The module is a classic client bundle (client-modules protocol): it registers
 // a factory with window.__ModuleLoader__ and returns apply().
@@ -145,6 +147,33 @@ window.__ModuleLoader__.load({
       'detail.truncated': '内容较长，当前显示已截断。',
       'detail.reasoning': '思维链',
       'detail.toolCall': '工具调用',
+      'display.badge': '已修改',
+      'display.badge.count': '已修改 ×{count}',
+      'display.badge.title': '已修改：点击查看原文与写入上下文的全文。',
+      'display.toggle.applied': '修改后 {count}',
+      'display.toggle.original': '原文 {count}',
+      'display.toggle.title': '切换真实对话显示：修改后内容 / 原始内容。只影响显示，不写入会话。',
+      'display.dialog.title': '已修改消息',
+      'display.dialog.subtitle': '第 #{seq} 条 · {role}',
+      'display.view.original': '原文',
+      'display.view.applied': '写入上下文',
+      'display.role.user': '用户消息',
+      'display.role.assistant': 'AI 回答',
+      'display.role.tool': '工具结果',
+      'display.role.context': '注入上下文',
+      'display.role.system': '系统消息',
+      'display.block.text': '正文',
+      'display.block.reasoning': '思维链',
+      'display.block.append': '补充正文',
+      'display.copy': '复制全文',
+      'display.copied': '已复制',
+      'display.copyFailed': '复制失败，请手动选择文本。',
+      'display.truncated': '内容较长，详情里只显示截断后的部分。',
+      'display.error': '读取修改失败：{error}',
+      'display.loading': '正在读取修改…',
+      'display.close': '关闭',
+      'display.prev': '上一条',
+      'display.next': '下一条',
       'detail.toolResult': '工具结果',
       'detail.attachments': '{count} 个附件',
       'detail.patched': '已改写',
@@ -344,6 +373,33 @@ window.__ModuleLoader__.load({
       'detail.truncated': 'This text is truncated in the current view.',
       'detail.reasoning': 'Reasoning',
       'detail.toolCall': 'Tool call',
+      'display.badge': 'Edited',
+      'display.badge.count': 'Edited ×{count}',
+      'display.badge.title': 'Edited: click to compare the original with the full text written into context.',
+      'display.toggle.applied': 'Applied {count}',
+      'display.toggle.original': 'Original {count}',
+      'display.toggle.title': 'Switch the real transcript between applied content and the original. Display only; nothing is written to the session.',
+      'display.dialog.title': 'Edited message',
+      'display.dialog.subtitle': 'Message #{seq} · {role}',
+      'display.view.original': 'Original',
+      'display.view.applied': 'In context',
+      'display.role.user': 'User message',
+      'display.role.assistant': 'Assistant reply',
+      'display.role.tool': 'Tool result',
+      'display.role.context': 'Injected context',
+      'display.role.system': 'System message',
+      'display.block.text': 'Text',
+      'display.block.reasoning': 'Reasoning',
+      'display.block.append': 'Added text',
+      'display.copy': 'Copy full text',
+      'display.copied': 'Copied',
+      'display.copyFailed': 'Copy failed; select the text manually.',
+      'display.truncated': 'This content is long; only the truncated part is shown.',
+      'display.error': 'Could not load edits: {error}',
+      'display.loading': 'Loading edits…',
+      'display.close': 'Close',
+      'display.prev': 'Previous',
+      'display.next': 'Next',
       'detail.toolResult': 'Tool result',
       'detail.attachments': '{count} attachment(s)',
       'detail.patched': 'Rewritten',
@@ -928,6 +984,525 @@ window.__ModuleLoader__.load({
       } catch (error) {
         console.error('[dsh-curate] session resync failed:', error)
       }
+      // The real Chat decorates its rows from `/changes`; refresh immediately
+      // so the badge and applied text appear as soon as the write lands.
+      try {
+        refreshChanges(sessionId)
+      } catch (error) {
+        console.error('[dsh-curate] change refresh failed:', error)
+      }
+    }
+
+    // --- changed-message display ---------------------------------------------
+
+    // One cache per Session; the header toggle, the Chat decoration layer and
+    // the comparison dialog all read the same list.
+    const changeSessions = new Map()
+    const DISPLAY_MODE_KEY = 'dsh-curate:chat-display'
+    const displayModeListeners = new Set()
+    let displayMode = 'applied'
+    let displayModeLoaded = false
+    const activeChangeDetail = { sessionId: null, seqs: [], listeners: new Set() }
+    const displayStores = new Map()
+
+    function changeSessionFor(sessionId) {
+      let entry = changeSessions.get(sessionId)
+      if (entry === undefined) {
+        entry = {
+          sessionId,
+          status: 'idle',
+          changes: [],
+          lastSeq: -1,
+          error: null,
+          promise: null,
+          generation: 0,
+          listeners: new Set(),
+        }
+        changeSessions.set(sessionId, entry)
+      }
+      return entry
+    }
+    function notifyChangeSession(entry) {
+      for (const listener of [...entry.listeners]) {
+        try {
+          listener()
+        } catch (error) {
+          console.error('[dsh-curate] change listener failed:', error)
+        }
+      }
+    }
+    function readDisplayMode() {
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) {
+          const stored = window.localStorage.getItem(DISPLAY_MODE_KEY)
+          if (stored === 'original') return 'original'
+        }
+      } catch {}
+      return 'applied'
+    }
+    function ensureDisplayMode() {
+      if (!displayModeLoaded) {
+        displayMode = readDisplayMode()
+        displayModeLoaded = true
+      }
+      return displayMode
+    }
+    function publishDisplayMode() {
+      for (const listener of [...displayModeListeners]) {
+        try {
+          listener()
+        } catch (error) {
+          console.error('[dsh-curate] display-mode listener failed:', error)
+        }
+      }
+    }
+    function setDisplayMode(next) {
+      const value = next === 'original' ? 'original' : 'applied'
+      if (value === displayMode) return
+      displayMode = value
+      displayModeLoaded = true
+      try {
+        if (typeof window !== 'undefined' && window.localStorage) window.localStorage.setItem(DISPLAY_MODE_KEY, value)
+      } catch {}
+      publishDisplayMode()
+    }
+    function useDisplayMode() {
+      ensureDisplayMode()
+      const [, force] = react.useState(0)
+      react.useEffect(() => {
+        const listener = () => force((value) => value + 1)
+        displayModeListeners.add(listener)
+        return () => displayModeListeners.delete(listener)
+      }, [])
+      return displayMode
+    }
+    function useChangeState(sessionId) {
+      const entry = changeSessionFor(sessionId)
+      const [, force] = react.useState(0)
+      react.useEffect(() => {
+        const listener = () => force((value) => value + 1)
+        entry.listeners.add(listener)
+        loadChanges(sessionId).catch(() => {})
+        return () => entry.listeners.delete(listener)
+      }, [sessionId])
+      return entry
+    }
+    function openChangeDetail(sessionId, seqs) {
+      if (!Array.isArray(seqs) || seqs.length === 0) return
+      activeChangeDetail.sessionId = sessionId
+      activeChangeDetail.seqs = seqs.slice()
+      for (const listener of [...activeChangeDetail.listeners]) {
+        try {
+          listener()
+        } catch (error) {
+          console.error('[dsh-curate] change-detail listener failed:', error)
+        }
+      }
+    }
+    function closeChangeDetail() {
+      activeChangeDetail.sessionId = null
+      activeChangeDetail.seqs = []
+      for (const listener of [...activeChangeDetail.listeners]) {
+        try {
+          listener()
+        } catch (error) {
+          console.error('[dsh-curate] change-detail listener failed:', error)
+        }
+      }
+    }
+    function useActiveChangeDetail() {
+      const [, force] = react.useState(0)
+      react.useEffect(() => {
+        const listener = () => force((value) => value + 1)
+        activeChangeDetail.listeners.add(listener)
+        return () => activeChangeDetail.listeners.delete(listener)
+      }, [])
+      return activeChangeDetail
+    }
+    async function loadChanges(sessionId, force = false) {
+      const entry = changeSessionFor(sessionId)
+      if (entry.promise !== null && !force) return entry.promise
+      if (force) entry.promise = null
+      const generation = ++entry.generation
+      entry.status = entry.changes.length === 0 ? 'loading' : entry.status
+      entry.error = null
+      notifyChangeSession(entry)
+      const promise = (async () => {
+        try {
+          const data = await request(`/changes?sessionId=${encodeURIComponent(sessionId)}`)
+          if (generation !== entry.generation) return entry
+          entry.changes = data && Array.isArray(data.changes) ? data.changes : []
+          entry.lastSeq = data && Number.isSafeInteger(data.lastSeq) ? data.lastSeq : -1
+          entry.status = 'ready'
+          entry.error = null
+        } catch (error) {
+          if (generation === entry.generation) {
+            entry.status = 'error'
+            entry.error = error
+          }
+        } finally {
+          if (generation === entry.generation) {
+            entry.promise = null
+            notifyChangeSession(entry)
+          }
+        }
+        return entry
+      })()
+      entry.promise = promise
+      return promise
+    }
+    function refreshChanges(sessionId) {
+      return loadChanges(sessionId, true)
+    }
+
+    // The Chat flow is rendered by the host. No slot exposes the text of every
+    // message row, so this layer follows the documented `data-chat-flow-key`
+    // anchors (the same contract the installed dsh-edit-turn plugin uses),
+    // replacing only the text container that exactly matches the recorded
+    // original. Everything it writes is tracked and restored on mode switch,
+    // session switch and plugin unload; a missing row/container is ignored.
+    const APPLIED_ATTR = 'data-dshcurate-applied'
+    const BADGE_ATTR = 'data-dshcurate-badge'
+    const CHANGED_ROW_CLASS = 'dshcurate-changed-row'
+
+    function displayStoreFor(sessionId) {
+      let store = displayStores.get(sessionId)
+      if (store === undefined) {
+        store = { elements: new Map(), badges: new Map(), rows: new Set() }
+        displayStores.set(sessionId, store)
+      }
+      return store
+    }
+    function normalizeDisplayText(value) {
+      return String(value === null || value === undefined ? '' : value).replace(/\s+/g, ' ').trim()
+    }
+    // Identity for matching: Markdown emphasis is rendered without its markers
+    // (`**1**` becomes `1`), so stripping the marker characters and all
+    // whitespace lets a stored raw block find the host's rendered element.
+    function matchDisplayText(value) {
+      return String(value === null || value === undefined ? '' : value)
+        .replace(/[`*_#>~[\]()!|]/g, ' ')
+        .replace(/\s+/g, '')
+    }
+    // What the reader sees for a patched block: unwrap the few markers that
+    // would otherwise appear literally in the transcript. The dialog keeps the
+    // exact raw text; this is display only.
+    function displayTextForChat(value) {
+      const text = String(value === null || value === undefined ? '' : value)
+      return text
+        .replace(/```[\s\S]*?```/g, (fence) => fence.replace(/^```[^\n]*\n?/gm, '').replace(/```$/gm, ''))
+        .replace(/`([^`]*)`/g, '$1')
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/__([^_]+)__/g, '$1')
+        .replace(/^#{1,6}\s+/gm, '')
+    }
+    function seqsForNode(node) {
+      if (node === null || node === undefined) return []
+      const data = node.data && typeof node.data === 'object' ? node.data : {}
+      const out = []
+      const push = (value) => {
+        if (typeof value === 'number' && !out.includes(value)) out.push(value)
+      }
+      switch (node.kind) {
+        case 'user':
+        case 'context':
+        case 'steering':
+          push(data.seq)
+          break
+        case 'assistant-step':
+          push(node.anchorSeq)
+          if (data.finalNode) push(data.finalNode.seq)
+          break
+        case 'tool-call':
+          if (data.root) push(data.root.seq)
+          break
+        case 'turn-tail':
+          push(node.anchorSeq)
+          if (data.closing && data.closing.finalNode) push(data.closing.finalNode.seq)
+          break
+        case 'turn-process':
+          push(data.answerAnchorSeq)
+          break
+        default:
+          push(node.anchorSeq)
+      }
+      return out
+    }
+    function nodeMessageId(node) {
+      if (node === null || node === undefined) return ''
+      const data = node.data && typeof node.data === 'object' ? node.data : {}
+      const candidates = [
+        data.finalNode && data.finalNode.messageId,
+        data.messageId,
+        data.closing && data.closing.finalNode && data.closing.finalNode.messageId,
+      ]
+      for (const value of candidates) if (typeof value === 'string' && value !== '') return value
+      return ''
+    }
+    function parseRowSeq(key) {
+      const match = /^(\d+):/.exec(String(key || ''))
+      if (match === null) return null
+      const value = Number(match[1])
+      return Number.isSafeInteger(value) ? value : null
+    }
+    function parseRowMessageId(key) {
+      const match = /input-message([0-9a-zA-Z-]+)/.exec(String(key || ''))
+      return match === null ? '' : match[1]
+    }
+    function displaySimilarity(text, wanted) {
+      let prefix = 0
+      while (prefix < text.length && prefix < wanted.length && text[prefix] === wanted[prefix]) prefix += 1
+      let suffix = 0
+      while (
+        suffix < text.length - prefix &&
+        suffix < wanted.length - prefix &&
+        text[text.length - 1 - suffix] === wanted[wanted.length - 1 - suffix]
+      ) suffix += 1
+      return prefix + suffix
+    }
+    function findDisplayTarget(row, originalText) {
+      const wanted = matchDisplayText(originalText)
+      if (wanted === '') return null
+      // The host renders each assistant body as `_markdown_*` (CSS-module hash).
+      // Targeting that container avoids depending on the rendered text being
+      // byte-identical to raw Markdown (code-block chrome, list markers and
+      // table pipes legitimately differ). With several candidates (reasoning
+      // and answer), pick the one sharing the most text with the recorded block.
+      const markdowns = [...row.querySelectorAll('[class*="_markdown"]')]
+        .filter((el) => el && el.closest('button, [class*="_actions"]') === null)
+      if (markdowns.length > 0) {
+        let structural = null
+        let structuralScore = -1
+        for (const el of markdowns) {
+          const text = matchDisplayText(el.textContent)
+          if (text === '') continue
+          const score = text === wanted ? Number.MAX_SAFE_INTEGER : displaySimilarity(text, wanted)
+          if (score > structuralScore) {
+            structural = el
+            structuralScore = score
+          }
+        }
+        if (structural !== null && structuralScore > 0) return structural
+      }
+      let best = null
+      let bestExact = false
+      let bestScore = Infinity
+      for (const el of row.querySelectorAll('*')) {
+        if (!el || typeof el.getAttribute !== 'function') continue
+        if (el === row) continue
+        if (el.closest('button, time, a, [data-dshcurate-badge], [class*="_actions"]') !== null) continue
+        const text = matchDisplayText(el.textContent)
+        if (text === '') continue
+        const exact = text === wanted
+        if (!exact && !text.includes(wanted)) continue
+        const childCount = el.querySelectorAll('*').length
+        const score = exact ? childCount * 1_000_000 + text.length : 1_000_000_000 + (text.length - wanted.length)
+        if (best === null || (exact && !bestExact) || (exact === bestExact && score < bestScore)) {
+          best = el
+          bestExact = exact
+          bestScore = score
+        }
+      }
+      return best
+    }
+    function restoreDisplayElement(entry) {
+      try {
+        if (!entry || !entry.el || !entry.el.isConnected) return
+        entry.el.innerHTML = entry.html
+        entry.el.removeAttribute(APPLIED_ATTR)
+        entry.el.style.whiteSpace = entry.whiteSpace === undefined ? '' : entry.whiteSpace
+        if (entry.el.getAttribute('style') === '') entry.el.removeAttribute('style')
+      } catch {}
+    }
+    /**
+     * Decorate the real Chat rows for one Session. Pure DOM + data; exported
+     * for tests so the matching/restore behavior can run without a live page.
+     * @param options - `{ document, sessionId, snapshot, changes, mode, onOpen }`.
+     * @returns counts for assertions.
+     */
+    function applyChatDisplay(options = {}) {
+      const doc = options.document || (typeof document !== 'undefined' ? document : null)
+      if (!doc) return { rows: 0, elements: 0, badges: 0 }
+      const sessionId = typeof options.sessionId === 'string' ? options.sessionId : 'session'
+      const changes = Array.isArray(options.changes) ? options.changes.filter(Boolean) : []
+      const mode = options.mode === 'original' ? 'original' : 'applied'
+      const snapshot = options.snapshot || null
+      const onOpen = typeof options.onOpen === 'function' ? options.onOpen : null
+      const store = displayStoreFor(sessionId)
+      const rows = []
+      for (const row of doc.querySelectorAll('[data-chat-flow-key]')) {
+        if (!row || typeof row.getAttribute !== 'function') continue
+        const rowKind = row.getAttribute('data-chat-flow-kind')
+        // Process/tail chrome is not a message row: the turn-process node also
+        // names the closing assistant seq, but has no markdown body to patch.
+        if (rowKind === 'turn-tail' || rowKind === 'turn-process') continue
+        const key = row.getAttribute('data-chat-flow-key') || ''
+        let node
+        try {
+          node = snapshot && snapshot.chat && snapshot.chat.nodes && typeof snapshot.chat.nodes.get === 'function'
+            ? snapshot.chat.nodes.get(key)
+            : undefined
+        } catch {
+          node = undefined
+        }
+        const parsedSeq = parseRowSeq(key)
+        const seqs = node ? seqsForNode(node) : (parsedSeq === null ? [] : [parsedSeq])
+        rows.push({
+          row,
+          key,
+          seqs,
+          messageId: nodeMessageId(node) || parseRowMessageId(key),
+        })
+      }
+      const changeBySeq = new Map()
+      for (const change of changes) {
+        if (Number.isSafeInteger(change.seq)) changeBySeq.set(change.seq, change)
+      }
+      const rowBySeq = new Map()
+      for (const entry of rows) {
+        for (const seq of entry.seqs) {
+          if (changeBySeq.has(seq) && !rowBySeq.has(seq)) rowBySeq.set(seq, entry.row)
+        }
+        if (entry.messageId === '') continue
+        for (const change of changes) {
+          if (change.messageId === entry.messageId && !rowBySeq.has(change.seq)) rowBySeq.set(change.seq, entry.row)
+        }
+      }
+
+      const wantedBadgeRows = new Map()
+      for (const change of changes) {
+        const row = rowBySeq.get(change.seq)
+        if (row === undefined) continue
+        let seqSet = wantedBadgeRows.get(row)
+        if (seqSet === undefined) {
+          seqSet = new Set()
+          wantedBadgeRows.set(row, seqSet)
+        }
+        seqSet.add(change.seq)
+        if (mode === 'original') continue
+        const blocks = Array.isArray(change.blocks) ? change.blocks : []
+        for (const block of blocks) {
+          if (!block || typeof block !== 'object') continue
+          if (block.append === true && block.original === '') continue
+          const key = `${change.seq}:${block.blockIndex}`
+          const existing = store.elements.get(key)
+          if (existing && existing.el && existing.el.isConnected && row.contains(existing.el)) {
+            const appliedText = displayTextForChat(block.applied)
+            if (existing.el.textContent !== appliedText) existing.el.textContent = appliedText
+            existing.el.setAttribute(APPLIED_ATTR, key)
+            existing.el.style.whiteSpace = 'pre-wrap'
+            continue
+          }
+          if (existing) store.elements.delete(key)
+          const target = findDisplayTarget(row, block.original)
+          if (target === null) continue
+          const saved = { el: target, html: target.innerHTML, whiteSpace: target.style.whiteSpace }
+          target.textContent = displayTextForChat(block.applied)
+          target.setAttribute(APPLIED_ATTR, key)
+          target.style.whiteSpace = 'pre-wrap'
+          store.elements.set(key, saved)
+        }
+      }
+
+      if (mode === 'original') {
+        for (const [key, entry] of [...store.elements]) {
+          restoreDisplayElement(entry)
+          store.elements.delete(key)
+        }
+      } else {
+        const wantedKeys = new Set()
+        for (const change of changes) {
+          for (const block of (Array.isArray(change.blocks) ? change.blocks : [])) {
+            if (block && !(block.append === true && block.original === '')) wantedKeys.add(`${change.seq}:${block.blockIndex}`)
+          }
+        }
+        for (const [key, entry] of [...store.elements]) {
+          if (!wantedKeys.has(key) || !entry.el || !entry.el.isConnected) {
+            restoreDisplayElement(entry)
+            store.elements.delete(key)
+          }
+        }
+      }
+
+      for (const [row, seqSet] of wantedBadgeRows) {
+        let badge = store.badges.get(row)
+        if (badge === undefined) {
+          const button = doc.createElement('button')
+          button.type = 'button'
+          button.className = 'dshcurate-edited-badge'
+          button.setAttribute(BADGE_ATTR, '')
+          const record = { button, seqs: [...seqSet] }
+          button.addEventListener('click', (event) => {
+            event.preventDefault()
+            event.stopPropagation()
+            if (onOpen) onOpen(sessionId, record.seqs)
+          })
+          row.appendChild(button)
+          badge = record
+          store.badges.set(row, badge)
+          store.rows.add(row)
+        }
+        const seqs = [...seqSet]
+        const label = seqs.length > 1 ? tr('display.badge.count', { count: seqs.length }) : tr('display.badge')
+        if (badge.button.textContent !== label) badge.button.textContent = label
+        badge.button.setAttribute('title', tr('display.badge.title'))
+        badge.button.setAttribute('aria-label', tr('display.badge.title'))
+        badge.seqs = seqs
+        row.classList.add(CHANGED_ROW_CLASS)
+      }
+      for (const [row, badge] of [...store.badges]) {
+        if (!wantedBadgeRows.has(row)) {
+          badge.button.remove()
+          store.badges.delete(row)
+          row.classList.remove(CHANGED_ROW_CLASS)
+          store.rows.delete(row)
+        }
+      }
+      for (const row of [...store.rows]) {
+        if (!store.badges.has(row)) {
+          row.classList.remove(CHANGED_ROW_CLASS)
+          store.rows.delete(row)
+        }
+      }
+      return { rows: wantedBadgeRows.size, elements: store.elements.size, badges: store.badges.size }
+    }
+    function restoreChatDisplay(sessionId) {
+      const store = displayStores.get(sessionId)
+      if (store === undefined) return
+      for (const entry of store.elements.values()) restoreDisplayElement(entry)
+      for (const badge of store.badges.values()) badge.button.remove()
+      for (const row of store.rows) row.classList.remove(CHANGED_ROW_CLASS)
+      displayStores.delete(sessionId)
+    }
+    // The active conversation runtime exposes conversation state through the
+    // `useConversation` standard hook, not through the session controller's
+    // snapshot. Accept both shapes so the decoration layer also works on the
+    // older runtime that carried `chat` directly on the session snapshot.
+    function selectConversationChat(snapshot) {
+      if (!snapshot || typeof snapshot !== 'object') return undefined
+      if (snapshot.chat && snapshot.chat.nodes) return snapshot.chat
+      try {
+        const chat = snapshot.views && typeof snapshot.views.get === 'function' ? snapshot.views.get('chat') : undefined
+        return chat && chat.nodes ? chat : undefined
+      } catch {
+        return undefined
+      }
+    }
+    function syncChangeDisplay(sessionId, changes, mode, onOpen, chat) {
+      let snapshot = chat && chat.nodes ? { chat } : null
+      if (snapshot === null) {
+        try {
+          const sessions = clientCtx && typeof clientCtx.get === 'function' ? clientCtx.get('sessions') : null
+          const binding = sessions && typeof sessions.binding === 'function' ? sessions.binding(sessionId) : undefined
+          const session = binding && binding.session
+          const sessionSnapshot = session && typeof session.getSnapshot === 'function' ? session.getSnapshot() : null
+          const fallbackChat = selectConversationChat(sessionSnapshot)
+          if (fallbackChat) snapshot = { chat: fallbackChat }
+        } catch {
+          snapshot = null
+        }
+      }
+      return applyChatDisplay({ document: typeof document === 'undefined' ? null : document, sessionId, snapshot, changes, mode, onOpen })
     }
 
     // --- grouping ------------------------------------------------------------
@@ -1049,6 +1624,27 @@ window.__ModuleLoader__.load({
       style.textContent = `
         .dshcurate-open{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 9px;border:1px solid var(--dsw-alias-border-l2, #d9d9d9);border-radius:6px;background:transparent;color:var(--dsw-alias-label-primary, #222);font-size:12px;line-height:1;cursor:pointer;white-space:nowrap}
         .dshcurate-open:hover{background:var(--dsw-alias-interactive-bg-hover, #f5f5f5)}
+        .dshcurate-display-toggle{font-weight:600}
+        .dshcurate-display-toggle.active{border-color:var(--dsw-alias-state-success-primary,#3a8a3a);color:var(--dsw-alias-state-success-primary,#3a8a3a);background:var(--dsw-alias-state-success-bg,rgba(58,138,58,.10))}
+        .dshcurate-changed-row{position:relative}
+        .dshcurate-edited-badge{position:absolute;top:4px;right:8px;z-index:6;display:inline-flex;align-items:center;height:19px;padding:0 7px;border:1px solid var(--dsw-alias-border-l2,#d9d9d9);border-radius:999px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-secondary,#666);font-size:10.5px;line-height:1;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.06);opacity:.94}
+        .dshcurate-edited-badge:hover{color:var(--dsw-alias-label-primary,#222);border-color:var(--dsw-alias-state-success-primary,#3a8a3a);opacity:1}
+        .dshcurate-change-layer{position:fixed;inset:0;z-index:90;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--dsw-alias-bg-mask-1,rgba(0,0,0,.38))}
+        .dshcurate-change-panel{width:min(760px,94vw);max-height:82vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:12px;background:var(--dsw-alias-bg-layer-1,#fff);color:var(--dsw-alias-label-primary,#222);box-shadow:0 18px 48px rgba(0,0,0,.22);font-size:13px}
+        .dshcurate-change-head{display:flex;align-items:flex-start;gap:12px;padding:12px 16px 10px;border-bottom:1px solid var(--dsw-alias-border-l2,#e8e8e8)}
+        .dshcurate-change-heading{flex:1;min-width:0}
+        .dshcurate-change-title{font-size:15px;font-weight:600;line-height:1.4}
+        .dshcurate-change-sub{margin-top:2px;font-size:11.5px;line-height:1.5;color:var(--dsw-alias-label-tertiary,#777)}
+        .dshcurate-change-tabs{display:flex;gap:6px;overflow-x:auto;padding:8px 16px;border-bottom:1px solid var(--dsw-alias-border-l2,#f0f0f0)}
+        .dshcurate-change-tab{height:24px;padding:0 8px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary,#555);font-size:11.5px;white-space:nowrap;cursor:pointer}
+        .dshcurate-change-tab.active{border-color:var(--dsw-alias-border-l2,#ddd);background:var(--dsw-alias-interactive-bg-hover,#f5f5f5);color:var(--dsw-alias-label-primary,#222)}
+        .dshcurate-change-modes{display:inline-flex;align-self:flex-start;gap:2px;margin:10px 16px 0;padding:2px;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:7px}
+        .dshcurate-change-mode{height:24px;padding:0 10px;border:0;border-radius:5px;background:transparent;color:var(--dsw-alias-label-secondary,#555);font-size:11.5px;cursor:pointer}
+        .dshcurate-change-mode.active{background:var(--dsw-alias-button-ghost-active-fill,var(--dsw-alias-interactive-bg-hover,#eee));color:var(--dsw-alias-label-primary,#222);font-weight:600}
+        .dshcurate-change-pre{flex:1;min-height:80px;overflow:auto;margin:8px 16px 12px;padding:12px;border:1px solid var(--dsw-alias-border-l2,#e6e6e6);border-radius:8px;background:var(--dsw-alias-interactive-bg-hover,#fafafa);color:var(--dsw-alias-label-primary,#222);white-space:pre-wrap;overflow-wrap:anywhere;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;line-height:1.6}
+        .dshcurate-change-foot{display:flex;align-items:center;gap:8px;padding:10px 16px 12px;border-top:1px solid var(--dsw-alias-border-l2,#f0f0f0)}
+        .dshcurate-change-foot .spacer{flex:1}
+        @media (max-width:720px){.dshcurate-change-layer{padding:0}.dshcurate-change-panel{width:100vw;max-height:100vh;border-radius:0}.dshcurate-edited-badge{top:2px;right:4px}}
         .dshcurate-layer{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;padding:20px;background:var(--dsw-alias-bg-mask-1,rgba(0,0,0,.38))}
         .dshcurate-panel{width:min(1180px,96vw);height:92vh;display:flex;flex-direction:column;overflow:hidden;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:12px;background:var(--dsw-alias-bg-layer-1, #fff);color:var(--dsw-alias-label-primary,#222);box-shadow:0 18px 48px rgba(0,0,0,.22);font-size:13px}
         .dshcurate-head{display:flex;align-items:flex-start;gap:12px;padding:12px 16px 10px;border-bottom:1px solid var(--dsw-alias-border-l2,#e8e8e8)}
@@ -3354,6 +3950,226 @@ window.__ModuleLoader__.load({
       })
     }
 
+    function displayRoleLabel(role) {
+      const key = `display.role.${role}`
+      const text = tr(key)
+      return text === key ? String(role || '') : text
+    }
+    function displayBlockLabel(block) {
+      if (block && block.append === true) return tr('display.block.append')
+      if (block && block.blockKind === 'reasoning') return tr('display.block.reasoning')
+      return tr('display.block.text')
+    }
+
+    function ChangeDetail(props) {
+      const sessionId = props.sessionId
+      const detail = useActiveChangeDetail()
+      const entry = useChangeState(sessionId)
+      const changes = entry.changes.filter((change) => detail.seqs.includes(change.seq))
+      const [active, setActive] = react.useState(0)
+      const [view, setView] = react.useState('applied')
+      const [copied, setCopied] = react.useState(false)
+      const [copyError, setCopyError] = react.useState(false)
+      const flat = []
+      for (const change of changes) {
+        for (const block of Array.isArray(change.blocks) ? change.blocks : []) flat.push({ change, block })
+      }
+      react.useEffect(() => {
+        setActive(0)
+        setCopied(false)
+        setCopyError(false)
+      }, [detail.sessionId, detail.seqs.join(',')])
+      react.useEffect(() => {
+        const onKey = (event) => {
+          if (event.key === 'Escape') {
+            event.preventDefault()
+            event.stopPropagation()
+            closeChangeDetail()
+          }
+        }
+        window.addEventListener('keydown', onKey, true)
+        return () => window.removeEventListener('keydown', onKey, true)
+      }, [])
+      if (detail.sessionId !== sessionId || flat.length === 0) return null
+      const current = flat[Math.min(active, flat.length - 1)]
+      const block = current.block || {}
+      const text = view === 'original' ? String(block.original || '') : String(block.applied || '')
+      const copy = async () => {
+        try {
+          await navigator.clipboard.writeText(text)
+          setCopied(true)
+          setCopyError(false)
+          window.setTimeout(() => setCopied(false), 1400)
+        } catch {
+          setCopyError(true)
+        }
+      }
+      return jsx('div', {
+        className: 'dshcurate-change-layer',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': tr('display.dialog.title'),
+        onMouseDown: (event) => {
+          if (event.target === event.currentTarget) closeChangeDetail()
+        },
+        children: jsxs('div', {
+          className: 'dshcurate-change-panel',
+          children: [
+            jsxs('div', {
+              className: 'dshcurate-change-head',
+              children: [
+                jsxs('div', {
+                  className: 'dshcurate-change-heading',
+                  children: [
+                    jsx('div', { className: 'dshcurate-change-title', children: tr('display.dialog.title') }),
+                    jsx('div', {
+                      className: 'dshcurate-change-sub',
+                      children: tr('display.dialog.subtitle', { seq: current.change.seq, role: displayRoleLabel(current.change.role) }),
+                    }),
+                  ],
+                }),
+                jsx('button', {
+                  type: 'button',
+                  className: 'dshcurate-icon',
+                  title: tr('display.close'),
+                  'aria-label': tr('display.close'),
+                  onClick: closeChangeDetail,
+                  children: '×',
+                }),
+              ],
+            }),
+            flat.length > 1
+              ? jsx('div', {
+                  className: 'dshcurate-change-tabs',
+                  role: 'tablist',
+                  children: flat.map((item, index) => jsx('button', {
+                    type: 'button',
+                    role: 'tab',
+                    className: `dshcurate-change-tab${index === active ? ' active' : ''}`,
+                    'aria-selected': index === active ? 'true' : 'false',
+                    onClick: () => { setActive(index); setCopied(false) },
+                    children: `#${item.change.seq} ${displayBlockLabel(item.block)}`,
+                  }, `${item.change.seq}:${index}`)),
+                })
+              : null,
+            jsxs('div', {
+              className: 'dshcurate-change-modes',
+              role: 'group',
+              'aria-label': tr('display.dialog.title'),
+              children: [
+                ['original', tr('display.view.original')],
+                ['applied', tr('display.view.applied')],
+              ].map(([value, label]) => jsx('button', {
+                type: 'button',
+                className: `dshcurate-change-mode${view === value ? ' active' : ''}`,
+                'aria-pressed': view === value ? 'true' : 'false',
+                onClick: () => { setView(value); setCopied(false); setCopyError(false) },
+                children: label,
+              }, value)),
+            }),
+            block.truncated === true
+              ? jsx('div', { className: 'dshcurate-note', children: tr('display.truncated') })
+              : null,
+            copyError
+              ? jsx('div', { className: 'dshcurate-note', children: tr('display.copyFailed') })
+              : null,
+            jsx('pre', { className: 'dshcurate-change-pre', children: text === '' ? '…' : text }),
+            jsxs('div', {
+              className: 'dshcurate-change-foot',
+              children: [
+                jsx('button', {
+                  type: 'button',
+                  className: `dshcurate-btn${copied ? ' primary' : ''}`,
+                  onClick: copy,
+                  title: tr('display.copy'),
+                  children: copied ? tr('display.copied') : tr('display.copy'),
+                }),
+                jsx('span', { className: 'spacer' }),
+                jsx('button', {
+                  type: 'button',
+                  className: 'dshcurate-btn',
+                  onClick: closeChangeDetail,
+                  children: tr('display.close'),
+                }),
+              ],
+            }),
+          ],
+        }),
+      })
+    }
+
+    function ChangeDisplay(props) {
+      const sessionId = props.sessionId
+      const entry = useChangeState(sessionId)
+      const mode = useDisplayMode()
+      const detail = useActiveChangeDetail()
+      // session-scoped slot standard props carry the target-neutral
+      // Conversation snapshot; the Chat business target lives under `views`.
+      const useConversation = typeof props.useConversation === 'function'
+        ? props.useConversation
+        : (typeof props.useSession === 'function' ? props.useSession : null)
+      const chat = useConversation === null ? null : useConversation(selectConversationChat)
+      const stateRef = react.useRef({ changes: entry.changes, mode, chat })
+      stateRef.current = { changes: entry.changes, mode, chat }
+      const syncRef = react.useRef(() => {})
+      syncRef.current = () => {
+        try {
+          syncChangeDisplay(sessionId, stateRef.current.changes, stateRef.current.mode, openChangeDetail, stateRef.current.chat)
+        } catch (error) {
+          console.error('[dsh-curate] chat display sync failed:', error)
+        }
+      }
+      const hasChanges = entry.changes.length > 0
+      react.useEffect(() => {
+        if (!hasChanges) {
+          try { restoreChatDisplay(sessionId) } catch {}
+          return undefined
+        }
+        let scheduled = false
+        const run = () => {
+          scheduled = false
+          syncRef.current()
+        }
+        const schedule = () => {
+          if (scheduled) return
+          scheduled = true
+          if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(run)
+          else window.setTimeout(run, 16)
+        }
+        const observer = typeof MutationObserver === 'function' ? new MutationObserver(schedule) : null
+        if (observer !== null) observer.observe(document.body, { childList: true, subtree: true })
+        schedule()
+        return () => {
+          if (observer !== null) observer.disconnect()
+          try { restoreChatDisplay(sessionId) } catch {}
+        }
+      }, [sessionId, hasChanges])
+      react.useEffect(() => {
+        if (entry.changes.length > 0) syncRef.current()
+        else {
+          try { restoreChatDisplay(sessionId) } catch {}
+        }
+      }, [sessionId, entry.changes, mode, entry.status, chat])
+      return detail.sessionId === sessionId ? jsx(ChangeDetail, { sessionId }) : null
+    }
+
+    function ChangeToggle(props) {
+      useLocaleTick()
+      const entry = useChangeState(props.sessionId)
+      const mode = useDisplayMode()
+      if (entry.changes.length === 0) return null
+      const applied = mode !== 'original'
+      const count = entry.changes.length
+      return jsx('button', {
+        type: 'button',
+        className: `dshcurate-open dshcurate-display-toggle${applied ? ' active' : ''}`,
+        title: tr('display.toggle.title'),
+        'aria-pressed': applied ? 'true' : 'false',
+        onClick: () => setDisplayMode(applied ? 'original' : 'applied'),
+        children: applied ? tr('display.toggle.applied', { count }) : tr('display.toggle.original', { count }),
+      })
+    }
+
     function ModalShell(props) {
       const sessionId = props.sessionId
       const workbench = useWorkbenchState(sessionId)
@@ -3421,6 +4237,20 @@ window.__ModuleLoader__.load({
           HeaderEntry,
         ),
       )
+      // The display switch sits next to the curation entry and only appears
+      // once /changes reports at least one edited message.
+      ctx.slots.inject('conversation.session.header.actions', () =>
+        ctx.slots.register(
+          {
+            name: 'conversation.session.header.actions',
+            id: 'dsh-curate-display',
+            order: 13,
+            locale: NS,
+            inject: (sessionId) => ({ sessionId }),
+          },
+          ChangeToggle,
+        ),
+      )
       ctx.slots.inject('conversation.input.overlay', () =>
         ctx.slots.register(
           {
@@ -3431,6 +4261,21 @@ window.__ModuleLoader__.load({
             inject: (sessionId) => ({ sessionId }),
           },
           ModalShell,
+        ),
+      )
+      // Headless decoration layer: it follows the real Chat rows, writes only
+      // the tracked text replacement + badge, and restores everything on
+      // unload. It renders nothing until a badge is clicked.
+      ctx.slots.inject('conversation.input.overlay', () =>
+        ctx.slots.register(
+          {
+            name: 'conversation.input.overlay',
+            id: 'dsh-curate-change-display',
+            order: 12,
+            locale: NS,
+            inject: (sessionId) => ({ sessionId }),
+          },
+          ChangeDisplay,
         ),
       )
 
@@ -3543,6 +4388,20 @@ window.__ModuleLoader__.load({
       GroupCard,
       Workbench,
       HeaderEntry,
+      ChangeToggle,
+      ChangeDisplay,
+      ChangeDetail,
+      changeSessionFor,
+      openChangeDetail,
+      closeChangeDetail,
+      setDisplayMode,
+      applyChatDisplay,
+      restoreChatDisplay,
+      seqsForNode,
+      findDisplayTarget,
+      normalizeDisplayText,
+      matchDisplayText,
+      displayTextForChat,
       editKeyFor,
       hostErrorText,
       normalizePreserveTurns,

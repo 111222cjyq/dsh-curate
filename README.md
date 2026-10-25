@@ -4,9 +4,10 @@
 It lists the model-visible session as turns, lets you mark whole turns or single
 messages **Important** (keep verbatim) / **Default** (summarize normally) / **Minor** (drop outright) and
 rewrite user, assistant, tool-result and injected-context messages in place
-without a model call, then compresses the marked ranges (Default blocks are
-replaced by model-written summaries, Minor blocks are dropped) or runs the
-official `/compact`. Every write is preceded by a local JSON
+without a model call, shows the applied edits in the real transcript (with an
+Edited marker and an Original/Applied switch), then compresses the marked ranges
+(Default blocks are replaced by model-written summaries, Minor blocks are
+dropped) or runs the official `/compact`. Every write is preceded by a local JSON
 backup. Install with `dsh plugin --profile web add github:111222cjyq/dsh-curate`,
 then restart `dsh web` and hard-refresh the page. Requires DSH 0.2.1-rc.x and
 Node.js ≥ 22.
@@ -59,6 +60,18 @@ DSH 自带的 `compaction-basic` 是“到阈值自动压”。这个插件的�
 - **压缩摘要只看对话文本**：单独开关。开启后「默认」段生成摘要时只读取用户/助手的 text 块，工具输出、注入上下文、思维链不进入摘要；关闭时保持全文摘要。「次要」段始终直接丢弃，不受该开关影响。
 - **分组统计**：仅文本模式下卡片只统计可见的 user/assistant 条数与 tokens，并显示「已隐藏 N 条工具/上下文」；压缩仍覆盖整段，除非开启压缩摘要只看对话文本。
 
+## 真实对话中的修改显示（0.7.0）
+
+写入上下文之后，dsh-curate 会把真实 Chat 里的被修改消息**就地显示成实际写入的文本**，不再只在工作台里可见：
+
+- **默认显示修改后内容**：打开有修改的会话时，Chat 中显示「写入上下文」的版本；标题旁出现「修改后 N / 原文 N」开关，可随时切回原始对话。偏好保存在浏览器本地，只影响显示，不写入会话。
+- **已修改标记**：每条被修改的消息右上角都有「已修改」小标签（点击打开详情）；同一行有多条修改时显示「已修改 ×N」。
+- **查看完整全文**：详情层可以在「原文」与「写入上下文」之间切换，并显示对应版本的完整文本（不截断、不省略），支持「复制全文」。
+- **覆盖范围**：用户提问（prompt replacement）、AI 回答、思维链、工具结果、注入上下文、以及没有正文的追加补丁（append）都会产生标记；无法在 DOM 里定位正文的折叠消息仍保留标记和全文详情。
+- **不写会话**：显示层只读取 `GET /dsh-curate/changes`，不发送任何 POST；关闭插件或刷新页面会恢复宿主原始 HTML。
+
+已知限制：内联替换使用纯文本（保留换行，避免把 `**加粗**` 这类 Markdown 标记原样显示），可能丢失代码块/表格排版；全文详情保留原始文本。宿主自带的「复制」仍复制原始消息；需要复制写入内容时用详情层的「复制全文」。压缩摘要的 Chat 展示暂不在 0.7.0 范围内。
+
 ## 压缩上下文
 
 - **按整理结果压缩**：使用每段的语气标记，在压缩时调用模型为每个「默认」区间生成摘要并替换；「次要」区间不调用模型，直接丢弃并写入一条极短的省略标记。摘要里的 `【…】` 来源标记告诉模型这是用户整理后的内容。
@@ -110,6 +123,8 @@ dsh plugin --profile web add "$PWD"
 
 **0.6.0**：修复「查看完整内容 / 编辑」打开时的 `Cannot access 'truncated' before initialization` 500；语气改为「重要 / 默认 / 次要」，默认=常规摘要、次要=直接丢弃（不生成摘要）；按钮补全悬停说明；确认弹窗区分摘要段与丢弃段；新增真实 DSH 会话折叠测试，证明压缩、丢弃和编辑确实进入模型上下文。
 
+**0.7.0**：真实 Chat 直接显示写入上下文后的文本，每条修改旁有「已修改」标记，标题旁可在「修改后 / 原文」间切换；点标记可查看原文与写入上下文的完整全文（含复制）。显示层只改浏览器显示，不写会话；内联纯文本可能丢失 Markdown 排版，详情层保留完整原文。
+
 ## 使用
 
 1. 打开任一会话，点头部「整理上下文」；工作台在右侧栏打开，需要更大空间时用右侧栏自带的全屏按钮。
@@ -134,10 +149,11 @@ dsh plugin --profile web add "$PWD"
 - 拒绝压缩：系统提示、最后一条消息、会拆开工具调用/结果的边界、重叠范围、超过 200 个块。
 - 只在会话空闲（没有进行中的 turn/compaction）时允许编辑和压缩；请求必须带打开工作台时的 `expectedLastSeq`，会话若已增长返回 409，要求刷新重来。
 - 路由只监听 loopback，并校验 `Host` 与 `Origin`；不额外要求页面 token，同机进程处于同一信任边界（与 dsh-edit-turn 的取舍一致）。
-- 助手回复、工具结果、注入上下文的改写都是**模型可见投影**：工作台内始终显示改后文本；工作台写入后会请求会话重新同步，主对话区通常立即更新，极端情况下刷新页面即可。
+- 助手回复、工具结果、注入上下文的改写都是**模型可见投影**：工作台内始终显示改后文本；工作台写入后会请求会话重新同步，真实 Chat 通过 `/changes` 显示改后文本与「已修改」标记，顶部开关可在修改后/原文之间切换。
 - 系统提示与工具调用参数保持只读；工具结果的编辑只改文本块，不改变工具调用配对。
 - 不处理图片/附件的语义压缩：带附件消息进入摘要时只保留占位说明，原文附件块仍在日志中。
 - 渲染模式的数学公式和脚注按普通文本处理（marked 默认渲染），不会做 KaTeX。
+- 真实对话的「修改后」显示是客户端 DOM 装饰层，不是新的会话事件；DSH 升级若改变 `data-chat-flow-key` 结构，标记会静默隐藏（不影响对话），需要同步更新显示层。
 
 ## 配置
 
@@ -164,7 +180,7 @@ npm test           # node --test：surface / edits / backup / host 路由 / clie
 结构：
 
 - `lib/index.js` — Cordis 插件入口，loopback-only 路由：
-  - `GET  /dsh-curate/state|content|message`
+  - `GET  /dsh-curate/state|changes|content|message`
   - `POST /dsh-curate/apply|edit|compact`（`/apply` 支持 `autoSummarize` 在写入前生成区间摘要）
 - `lib/surface.js` — 纯函数：surface fold、turn 索引、范围校验、摘要/省略帧
 - `lib/edits.js` — 纯函数：消息分类、提示词块组装、`plugin:dsh-curate/patch` 记录与投影
@@ -176,7 +192,7 @@ npm test           # node --test：surface / edits / backup / host 路由 / clie
 
 ## 代码结构图
 
-[`docs/architecture.html`](docs/architecture.html) 是自包含的代码结构图（浏览器打开，支持明暗主题），覆盖浏览器端工作台、宿主端六条路由与写入路径、消息投影/备份，以及所消费的 DSH 核心服务。
+[`docs/architecture.html`](docs/architecture.html) 是自包含的代码结构图（浏览器打开，支持明暗主题），覆盖浏览器端工作台、宿主端 loopback 路由与写入路径、消息投影/备份，以及所消费的 DSH 核心服务。
 
 ## 已知限制 / 非目标
 

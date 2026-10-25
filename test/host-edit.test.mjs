@@ -93,7 +93,7 @@ test('planEdits refuses empty, duplicate and off-surface edits', () => {
   )
 })
 
-test('plugin registers the projection and all six loopback routes', () => {
+test('plugin registers the projection and all seven loopback routes', () => {
   const routes = []
   const projections = []
   const registered = []
@@ -125,7 +125,7 @@ test('plugin registers the projection and all six loopback routes', () => {
   apply(ctx, {})
   assert.deepEqual(projections.map((projection) => projection.type), ['plugin:dsh-curate/patch'])
   const paths = routes.map((path) => path.replace('/dsh-curate/', ''))
-  assert.deepEqual(paths.sort(), ['apply', 'compact', 'content', 'edit', 'message', 'state'])
+  assert.deepEqual(paths.sort(), ['apply', 'changes', 'compact', 'content', 'edit', 'message', 'state'])
 })
 
 test('planEdits accepts tool results and injected context', () => {

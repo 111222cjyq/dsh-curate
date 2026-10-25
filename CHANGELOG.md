@@ -9,6 +9,26 @@ must be reconstructed from the repository history after the first push. The
 0.4.1 entry is dated from the working-tree file timestamps; confirm it against
 the actual release history before publishing.
 
+## [0.7.2] - 2026-10-25
+
+### Fixed
+
+- **A disabled “Apply to context” button now explains itself.** When there is
+  no staged edit, the workbench footer says so and names the next step (open a
+  message with the pencil, save the edit). Before, the footer was blank and the
+  only visible clue was a stale-draft banner.
+- When the saved draft cannot be restored because its messages are no longer on
+  the current surface, the banner now offers **“清除旧草稿 / Clear old draft”**.
+  Clearing signs out the protected draft so a fresh edit can be staged and
+  applied; the footer also distinguishes “unrestorable draft” from “no pending
+  edits”.
+
+### Changed
+
+- Clarified that “保存当前内容 / Save current content” only stores the local
+  workbench draft and never writes the session; applying requires “修改并应用到
+  上下文 / Apply edits to context”.
+
 ## [0.7.1] - 2026-10-25
 
 ### Added

@@ -114,7 +114,9 @@ window.__ModuleLoader__.load({
       'toast.saveFailed': '草稿保存失败：浏览器存储不可用或空间已满，请先复制需要保留的内容。',
       'toast.mergeLocked': '下一段属于最近保留的对话，不能合并。',
       'draft.restored': '已恢复你上次保存的草稿；会话之后有新消息，只保留了仍存在消息上的标注。',
-      'draft.unrestorable': '上次保存的草稿所标注的消息已不在会话中，草稿已保留但无法恢复。',
+      'draft.unrestorable': '上次保存的草稿所标注的消息已不在会话中，草稿已保留但无法恢复。', 
+      'draft.clear': '清除旧草稿',
+      'draft.cleared': '旧草稿已清除，可以在当前消息上重新编辑。',
       'edit.entry': '编辑',
       'edit.title.prompt': '编辑用户消息',
       'edit.title.reply': '编辑助手回复',
@@ -221,6 +223,8 @@ window.__ModuleLoader__.load({
       'compress.target.modified.hint': '先应用 {count} 处修改，再压缩修改后的内容。',
       'compress.target.modified.none': '没有暂存修改，无法选择。',
       'footer.pending': '{count} 处修改待应用',
+      'footer.noPending': '没有待应用修改；先点消息上的「编辑」→「保存修改」，按钮才会变成「修改并应用到上下文」。',
+      'footer.staleDraft': '上次草稿无法恢复，当前没有待应用修改；请清除旧草稿后重新编辑。',
       'edit.title.tool': '编辑工具结果',
       'edit.title.context': '编辑注入上下文',
       'edit.title.append': '补充回复正文',
@@ -347,7 +351,9 @@ window.__ModuleLoader__.load({
       'toast.saveFailed': 'Could not save the draft: browser storage is unavailable or full. Copy anything you need to keep.',
       'toast.mergeLocked': 'The next block is part of the recently kept turns and cannot be merged.',
       'draft.restored': 'Restored the draft you saved earlier; the session has grown since then, so only markings on messages that still exist were kept.',
-      'draft.unrestorable': 'None of the messages marked in the saved draft still exist; the draft was kept but cannot be restored.',
+      'draft.unrestorable': 'None of the messages marked in the saved draft still exist; the draft was kept but cannot be restored.', 
+      'draft.clear': 'Clear old draft',
+      'draft.cleared': 'Old draft cleared; edit a current message again.',
       'edit.entry': 'Edit',
       'edit.title.prompt': 'Edit your message',
       'edit.title.reply': 'Edit the reply',
@@ -454,6 +460,8 @@ window.__ModuleLoader__.load({
       'compress.target.modified.hint': 'Apply the {count} staged edit(s), then compress the modified content.',
       'compress.target.modified.none': 'No staged edits to apply.',
       'footer.pending': '{count} pending edit(s)',
+      'footer.noPending': 'No pending edits; open a message with the pencil, save the edit, then the button becomes “Apply edits to context”.',
+      'footer.staleDraft': 'The earlier draft could not be restored and there are no pending edits; clear it and edit a current message again.',
       'edit.title.tool': 'Edit the tool result',
       'edit.title.context': 'Edit the injected context',
       'edit.title.append': 'Add the missing reply text',
@@ -2052,7 +2060,9 @@ window.__ModuleLoader__.load({
         @media (max-width:720px){.dshcurate-panel{width:100vw;height:100vh;border-radius:0}.dshcurate-layer{padding:0}}
         .dshcurate-dock{width:100%;height:100%;min-height:0;display:flex;flex-direction:column;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#222)}
         .dshcurate-dock .dshcurate-panel{width:100%;height:100%;border:0;border-radius:0;box-shadow:none;background:transparent}
-        .dshcurate-banner{margin:0 0 10px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:8px;background:var(--dsw-alias-interactive-bg-hover,#f5f5f5);font-size:12px;line-height:1.55;color:var(--dsw-alias-label-secondary,#555)}
+        .dshcurate-banner{display:flex;align-items:center;gap:10px;margin:0 0 10px;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:8px;background:var(--dsw-alias-interactive-bg-hover,#f5f5f5);font-size:12px;line-height:1.55;color:var(--dsw-alias-label-secondary,#555)}
+        .dshcurate-banner .grow{flex:1;min-width:0}
+        .dshcurate-banner .dshcurate-btn{flex:none;height:24px;padding:0 8px;font-size:11.5px}
         .dshcurate-banner b{color:var(--dsw-alias-label-primary,#222)}
         .dshcurate-banner .path{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:11px;word-break:break-all}
         .dshcurate-detail{margin:6px 0 0}
@@ -2985,6 +2995,18 @@ window.__ModuleLoader__.load({
         }
       }
 
+      function discardStaleDraft() {
+        cancelPendingDraftWrite()
+        if (!clearDraft(sessionId)) {
+          showToast(tr('toast.saveFailed'))
+          return
+        }
+        protectedDraftRef.current = false
+        latestDraftRef.current = null
+        setDraftNotice('')
+        showToast(tr('draft.cleared'))
+      }
+
       function snapshotWorkbench() {
         return {
           tones: { ...tones },
@@ -3859,7 +3881,20 @@ window.__ModuleLoader__.load({
 
       const draftNoticeView = draftNotice === ''
         ? null
-        : jsx('div', { className: 'dshcurate-banner', children: draftNotice })
+        : jsxs('div', {
+            className: 'dshcurate-banner',
+            children: [
+              jsx('span', { className: 'grow', children: draftNotice }),
+              protectedDraftRef.current
+                ? jsx('button', {
+                    type: 'button',
+                    className: 'dshcurate-btn',
+                    onClick: discardStaleDraft,
+                    children: tr('draft.clear'),
+                  })
+                : null,
+            ],
+          })
 
       const compressPanel = compressOpen
         ? jsxs('div', {
@@ -4232,9 +4267,9 @@ window.__ModuleLoader__.load({
                   ? tr('panel.busy')
                   : edits.length > 0
                     ? tr('footer.pending', { count: edits.length })
-                    : selected.length === 0
-                      ? tr('footer.nothing')
-                      : '',
+                    : protectedDraftRef.current
+                      ? tr('footer.staleDraft')
+                      : tr('footer.noPending'),
               }),
               jsx('span', { className: 'note', children: tr('version.label', { version: PLUGIN_VERSION }) }),
             ],

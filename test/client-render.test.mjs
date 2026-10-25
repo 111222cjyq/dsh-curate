@@ -85,6 +85,8 @@ test('Workbench ready state renders cards, the tail and all four footer actions'
     assert.match(footer[3], /Undo|撤销/)
     const apply = container.querySelectorAll('.dshcurate-foot button')[0]
     assert.equal(apply.disabled, true, 'apply is disabled without staged edits')
+    assert.match(container.textContent, /No pending edits|没有待应用修改/,
+      'the footer explains why apply is disabled')
     const compress = container.querySelectorAll('.dshcurate-foot button')[1]
     assert.equal(compress.disabled, false)
     assert.ok(container.querySelector('.dshcurate-card.locked .dshcurate-message'), 'the tail renders as a message detail')

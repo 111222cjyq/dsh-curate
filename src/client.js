@@ -2086,6 +2086,7 @@ window.__ModuleLoader__.load({
         .dshcurate-editor-head{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;font-size:11.5px;color:var(--dsw-alias-label-tertiary,#777)}
         .dshcurate-editor-head .grow{flex:1}
         .dshcurate-editor-head select{height:24px;padding:0 6px;border:1px solid var(--dsw-alias-border-l2,#ddd);border-radius:6px;background:var(--dsw-alias-bg-layer-1,#fff);color:inherit;font-size:11.5px}
+        .dshcurate-editor-head .dshcurate-editor-save{flex:none;height:24px;padding:0 9px;font-size:11.5px}
         .dshcurate-editor .dshcurate-modes{margin-top:6px}
         .dshcurate-editor .dshcurate-source,.dshcurate-editor .dshcurate-rendered{min-height:150px;max-height:440px}
         .dshcurate-editor-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px;justify-content:flex-end;margin-top:6px}
@@ -2316,6 +2317,19 @@ window.__ModuleLoader__.load({
                 ],
               }) : null,
               jsx('span', { className: 'grow' }),
+              // The editor can be taller than the visible panel; put the save
+              // action at the top as well, right next to the edit title, so the
+              // user does not have to scroll to find it. The footer keeps the
+              // original save/cancel pair.
+              jsx('button', {
+                type: 'button',
+                className: 'dshcurate-btn small primary dshcurate-editor-save',
+                disabled,
+                title: tr('edit.save'),
+                'aria-label': tr('edit.save'),
+                onClick: onSave,
+                children: tr('edit.save'),
+              }),
             ],
           }),
           editing.append === true

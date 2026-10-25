@@ -9,6 +9,24 @@ must be reconstructed from the repository history after the first push. The
 0.4.1 entry is dated from the working-tree file timestamps; confirm it against
 the actual release history before publishing.
 
+## [0.7.3] - 2026-10-25
+
+### Changed
+
+- **The editor now has a save action at both ends.** “保存修改 / Save edit” is
+  available in the editor header next to the edit title (visible immediately)
+  and remains in the editor footer. Long messages previously put the only save
+  button below a 440px editor, so it was easy to edit and then not find how to
+  stage the change.
+- The footer of the workbench continues to be the place for “Apply edits to
+  context” (the actual write) and “Save current content” (the local draft); the
+  two save concepts remain explicitly separate.
+
+### Tests
+
+- The editor render test now asserts the top save action exists and is enabled
+  alongside the footer pair. Full suite: 136 tests.
+
 ## [0.7.2] - 2026-10-25
 
 ### Fixed

@@ -12,6 +12,14 @@
   `session message projection ... was removed or replaced`；已经失效的旧会话仍需完整重启一次。
 - **0.7.6 修复**：Chat 标记不再遮挡正文；编辑器标题不再重复。
 
+## 案例截图
+
+![工作台总览](https://raw.githubusercontent.com/111222cjyq/dsh-curate/main/docs/screenshots/01-workbench.png)
+
+![真实对话中的逐处高亮](https://raw.githubusercontent.com/111222cjyq/dsh-curate/main/docs/screenshots/02-chat-applied.png)
+
+![架构总览](https://raw.githubusercontent.com/111222cjyq/dsh-curate/main/docs/screenshots/06-architecture.png)
+
 ## 安装 / 升级
 
 ```bash

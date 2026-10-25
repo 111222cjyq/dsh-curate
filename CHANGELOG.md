@@ -9,6 +9,19 @@ must be reconstructed from the repository history after the first push. The
 0.4.1 entry is dated from the working-tree file timestamps; confirm it against
 the actual release history before publishing.
 
+## [0.7.4] - 2026-10-25
+
+### Changed
+
+- **Cancel now mirrors Save at the top of the editor.** The editor header shows
+  “取消 / Cancel” beside “保存修改 / Save edit”, and the original Cancel/Save
+  pair remains in the footer. Both ends are always visible immediately, even
+  for long messages.
+
+### Tests
+
+- The editor render test now asserts both top actions exist and are enabled.
+
 ## [0.7.3] - 2026-10-25
 
 ### Changed

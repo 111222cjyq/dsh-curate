@@ -81,7 +81,7 @@ const LABEL = {
   save: '保存当前内容|Save current content',
   undo: '^撤销$|^Undo$',
   keep: '^重要$|^Important$',
-  normal: '^一般$|^Normal$',
+  normal: '^默认$|^Default$',
   minor: '^次要$|^Minor$',
   expand: '查看完整原文|Read full text',
   collapse: '收起完整原文|Hide full text',
@@ -809,7 +809,7 @@ async function main() {
         .filter((button) => matcher.test((button.textContent || '').trim()))
       const before = stats()
       const keep = chips(/^(重要|Important)$/i)[0]
-      const normal = chips(/^(一般|Normal)$/i)[0]
+      const normal = chips(/^(默认|Default)$/i)[0]
       if (keep === undefined || normal === undefined) return { error: 'tone chips missing', before }
       keep.click(); await wait(400)
       const afterKeep = stats()
@@ -817,7 +817,7 @@ async function main() {
       return { before, afterKeep, afterNormal: stats() }
     })()`)
     check('group Important deselects the card from compression', groupTone.error === undefined && groupTone.afterKeep !== groupTone.before, clip(groupTone))
-    check('group Normal restores the selection', groupTone.error === undefined && groupTone.afterNormal === groupTone.before, clip(groupTone))
+    check('group Default restores the selection', groupTone.error === undefined && groupTone.afterNormal === groupTone.before, clip(groupTone))
 
     // --- full-text expansion --------------------------------------------------
     group('full text expansion')
@@ -880,13 +880,13 @@ async function main() {
           active: /active/.test(String(button.className)),
         }))
         const after = stats()
-        const normal = Array.from(card.querySelectorAll('.dshcurate-tones .dshcurate-tone')).find((button) => /^(一般|Normal)$/i.test((button.textContent || '').trim()))
+        const normal = Array.from(card.querySelectorAll('.dshcurate-tones .dshcurate-tone')).find((button) => /^(默认|Default)$/i.test((button.textContent || '').trim()))
         if (normal !== undefined) { normal.click(); await wait(450) }
         return { before, after, restored: stats(), active }
       })()`)
       check('per-message Minor tone activates on that message', msgTone.error === undefined && msgTone.active.some((button) => button.active === true && /次要|Minor/i.test(button.text)), clip(msgTone))
       check('per-message tone changes the compression selection', msgTone.error === undefined && msgTone.after !== msgTone.before, clip(msgTone))
-      check('group Normal restores the default selection after per-message triage', msgTone.error === undefined && msgTone.restored === msgTone.before, clip(msgTone))
+      check('group Default restores the default selection after per-message triage', msgTone.error === undefined && msgTone.restored === msgTone.before, clip(msgTone))
     } else {
       check('per-message tone buttons are reachable', false, 'no card expanded')
     }

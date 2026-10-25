@@ -237,7 +237,7 @@ test('summarizeOperation writes a summary at compression time and follows the to
   await __internals.summarizeOperation(ctx, {}, live, events, {
     kind: 'summary', startSeq: 2, endSeq: 3, shadowed: [2, 3], tone: 'normal',
   }, { textOnly: true })
-  assert.match(prompts[1], /一般/)
+  assert.match(prompts[1], /默认/)
   assert.doesNotMatch(prompts[1], /think/, 'text-only summaries omit reasoning')
 })
 

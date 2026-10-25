@@ -41,7 +41,7 @@ window.__ModuleLoader__.load({
       'action.open': '整理上下文',
       'action.title': '打开上下文整理工作台（人工筛选、改写，再压缩）',
       'panel.title': '上下文整理',
-      'panel.subtitle': '由你决定哪些重要，也可以改写任何消息。压缩时由模型生成替代摘要；被替换的原文不再进入模型上下文。',
+      'panel.subtitle': '由你决定哪些重要，也可以改写任何消息。压缩时：重要=原文保留，默认=生成摘要替换，次要=直接丢弃；被替换的原文不再进入模型上下文。',
       'panel.close': '关闭',
       'panel.loading': '正在读取会话上下文…',
       'panel.retry': '重试',
@@ -56,15 +56,17 @@ window.__ModuleLoader__.load({
       'scope.suffix': '轮不压缩',
       'scope.note': '最后一条消息永远保留；工具调用与结果不会被拆开。',
       'tone.keep': '重要',
-      'tone.normal': '一般',
+      'tone.normal': '默认',
       'tone.minor': '次要',
-      'tone.keep.hint': '整段原文保留，不进入压缩。',
+      'tone.keep.hint': '重要：该段原文保留，模型继续看到完整原文，不参与压缩。',
       'tone.mixed': '混合',
       'segment.keep.note': '原文保留，不进入压缩。',
+      'segment.summary.note': '压缩时生成常规摘要并替换该段。',
+      'segment.drop.note': '压缩时直接省略该段，只留一条“已省略”标记。',
       'segment.range': '#{start}–#{end} · {count} 条',
       'segment.hidden': '含 {count} 条已隐藏的工具/上下文',
-      'tone.normal.hint': '压缩时由模型生成常规摘要，保留关键细节。',
-      'tone.minor.hint': '压缩时由模型生成更短摘要，只留结论与错误。',
+      'tone.normal.hint': '默认：按常规方式压缩，由模型生成摘要替换该段（力度与官方压缩同类），保留后续任务需要的细节。',
+      'tone.minor.hint': '次要：直接从模型上下文丢弃该段，只留一条“已省略”标记，不生成摘要。',
       'locked.badge': '最近对话',
       'locked.override': '已覆盖',
       'tail.badge': '当前消息 · 固定保留',
@@ -79,7 +81,6 @@ window.__ModuleLoader__.load({
       'content.loaded': '已显示 {count} 条消息的完整原文',
       'content.showMore': '再显示 {count} 条',
       'content.failed': '读取原文失败：{error}',
-      'segment.autoSummary': '压缩时自动生成摘要。',
       'group.view.source': '源码',
       'group.view.rendered': '渲染',
       'group.split': '拆分',
@@ -90,6 +91,8 @@ window.__ModuleLoader__.load({
       'footer.nothing': '还没有选入任何要压缩的段落。',
       'confirm.title': '应用后无法撤销',
       'confirm.body': '即将替换 {count} 个压缩区间，共 {messages} 条原始消息。它们将不再进入模型上下文；原始内容已备份到本地文件，但会话内的消息无法通过撤销恢复。',
+      'confirm.summary': '{normal} 个「默认」段会生成摘要并替换。',
+      'confirm.drop': '{minor} 个「次要」段会被直接省略（不生成摘要）。',
       'confirm.keep': '同轮还有 {kept} 条标记为重要的消息会原文保留。',
       'confirm.backup': '备份位置：{path}',
       'confirm.check': '我理解：应用后原始消息不再进入模型上下文，且会话内无法撤销。',
@@ -103,7 +106,7 @@ window.__ModuleLoader__.load({
       'done.backup': '原文备份：{path}',
       'done.check': '回话后原始消息不再出现在模型上下文中。',
       'done.close': '关闭',
-      'toast.select': '请先给至少一个段落选择“一般”或“次要”。',
+      'toast.select': '请先给至少一个段落选择“默认”或“次要”。',
       'toast.noSplit': '这一段无法在不拆开工具调用的情况下切分。',
       'toast.saved': '草稿已保存到本地。',
       'toast.saveFailed': '草稿保存失败：浏览器存储不可用或空间已满，请先复制需要保留的内容。',
@@ -138,6 +141,7 @@ window.__ModuleLoader__.load({
       'edit.stale': '会话在工作台打开后有了新消息，请刷新后重试。',
       'edit.busy': '会话正在工作，等当前回合结束后再应用。',
       'detail.loadFull': '查看完整内容',
+      'detail.loadFull.hint': '读取这条消息的完整文本与可编辑块；只读，不会写入会话。',
       'detail.truncated': '内容较长，当前显示已截断。',
       'detail.reasoning': '思维链',
       'detail.toolCall': '工具调用',
@@ -148,11 +152,11 @@ window.__ModuleLoader__.load({
       'compress.target': '压缩对象',
       'compress.method': '压缩方式',
       'compress.curated': '按整理结果压缩',
-      'compress.curated.hint': '把选中的 {count} 段交给模型生成摘要并替换（共 {messages} 条原始消息）。',
-      'compress.curated.unavailable': '还没有可压缩的段：先给至少一段选「一般」或「次要」。',
+      'compress.curated.hint': '选中的 {count} 段共 {messages} 条原始消息：默认段生成摘要替换，次要段直接丢弃。',
+      'compress.curated.unavailable': '还没有可压缩的段：先给至少一段选「默认」或「次要」。',
       'compress.official': '官方 /compact',
       'compress.official.hint': '由官方压缩器自行选择较早历史，压成一条摘要；不按上面的分段标注。',
-      'compress.official.textOnly': '「压缩摘要只看对话文本」不影响官方 /compact，它仍读取完整历史。',
+      'compress.official.textOnly': '「压缩摘要只看对话文本」只影响「默认」段的摘要；「次要」段始终直接丢弃。官方 /compact 仍读取完整历史。',
       'compress.official.unavailable': '当前宿主或 agent 预设没有提供官方 /compact；刚升级插件时请重启 DSH web。',
       'compress.pendingEdits': '还有 {count} 处修改没有应用；先应用或撤销它们，再压缩。',
       'compress.confirm': '确认压缩',
@@ -165,9 +169,12 @@ window.__ModuleLoader__.load({
       'compress.irreversible': '我理解：压缩后原始消息不再进入模型上下文，且会话内无法撤销。',
       'compress.backup': '压缩前备份：{path}',
       'footer.compress': '压缩上下文',
+      'footer.compress.hint': '打开压缩确认：默认段生成摘要，次要段直接丢弃，重要段原文保留。',
       'footer.applyEdits': '修改并应用到上下文',
       'footer.save': '保存当前内容',
+      'footer.save.hint': '只把语气、视图和暂存修改保存为本地草稿，不写入会话。',
       'footer.undo': '撤销',
+      'footer.undo.hint': '回退最近一次语气、编辑或拆分改动；只影响工作台草稿。',
       'undo.empty': '没有可撤销的改动。',
       'undo.done': '已撤销上一步。',
       'panel.help': '说明',
@@ -190,11 +197,14 @@ window.__ModuleLoader__.load({
       'edit.entryHint': '点消息右上角「编辑」可改写正文、思维链、工具结果或注入上下文。',
       'view.all': '全部内容',
       'view.text': '仅对话文本',
+      'view.all.hint': '显示工具调用、工具结果、注入上下文与思维链；只影响查看与编辑，不改变压缩范围。',
+      'view.text.hint': '只显示用户与助手的对话文本，隐藏工具、上下文与思维链；只影响查看与编辑，不改变压缩范围。',
       'view.hidden': '已隐藏 {count} 条工具/上下文',
       'view.note': '视图只影响查看与编辑；压缩仍覆盖整段。',
       'view.empty': '这一段没有可显示的对话文本。',
       'tail.hidden': '最后一条消息是工具/上下文，已隐藏；压缩仍会保留它。',
       'summary.textOnly': '压缩摘要只看对话文本',
+      'summary.textOnly.hint': '开启后「默认」段生成摘要时只读用户/助手文本；「次要」段仍直接丢弃，官方 /compact 不受影响。',
       'summary.source.all': '压缩摘要来源：全部内容（压缩时自动生成）',
       'summary.source.text': '压缩摘要来源：仅对话文本（工具与上下文不进入摘要）',
       'version.label': 'v{version}',
@@ -230,7 +240,7 @@ window.__ModuleLoader__.load({
       'action.open': 'Curate context',
       'action.title': 'Open the context curation workbench (human triage, rewrite, then compress)',
       'panel.title': 'Context curation',
-      'panel.subtitle': 'You decide what matters and may rewrite any message. At compression time the model writes the replacement summaries; replaced originals leave the model context.',
+      'panel.subtitle': 'You decide what matters and may rewrite any message. At compression time: Important = kept verbatim, Default = summarised and replaced, Minor = dropped; replaced originals leave the model context.',
       'panel.close': 'Close',
       'panel.loading': 'Reading the session context…',
       'panel.retry': 'Retry',
@@ -245,15 +255,17 @@ window.__ModuleLoader__.load({
       'scope.suffix': 'turns verbatim',
       'scope.note': 'The final message is always kept; tool calls and results are never split.',
       'tone.keep': 'Important',
-      'tone.normal': 'Normal',
+      'tone.normal': 'Default',
       'tone.minor': 'Minor',
-      'tone.keep.hint': 'Keep this range verbatim.',
+      'tone.keep.hint': 'Important: keep this range verbatim; the model still sees the full text and it is not compressed.',
       'tone.mixed': 'Mixed',
       'segment.keep.note': 'Kept verbatim; not compressed.',
+      'segment.summary.note': 'Replaced by a normal summary at compression time.',
+      'segment.drop.note': 'Dropped at compression time; only an “omitted” marker remains.',
       'segment.range': '#{start}–#{end} · {count} message(s)',
       'segment.hidden': 'Includes {count} hidden tool/context item(s)',
-      'tone.normal.hint': 'Summarize with key details at compression time.',
-      'tone.minor.hint': 'Summarize hard at compression time; conclusions and errors only.',
+      'tone.normal.hint': 'Default: compress normally like the official compactor — replace this range with a standard summary that keeps details later steps need.',
+      'tone.minor.hint': 'Minor: drop this range from the model context; only a short “omitted” marker remains. No summary is generated.',
       'locked.badge': 'Recent',
       'locked.override': 'Overridden',
       'tail.badge': 'Latest message · always kept',
@@ -268,7 +280,6 @@ window.__ModuleLoader__.load({
       'content.loaded': 'Full text for {count} messages',
       'content.showMore': 'Show {count} more',
       'content.failed': 'Could not load the full text: {error}',
-      'segment.autoSummary': 'A summary is generated automatically at compression time.',
       'group.view.source': 'Source',
       'group.view.rendered': 'Rendered',
       'group.split': 'Split',
@@ -279,6 +290,8 @@ window.__ModuleLoader__.load({
       'footer.nothing': 'No block selected for compression.',
       'confirm.title': 'Apply cannot be undone',
       'confirm.body': 'Replacing {count} compressed range(s), {messages} original messages. They stop entering the model context. The originals are backed up on disk, but the session cannot be rolled back.',
+      'confirm.summary': '{normal} “Default” block(s) will be summarised and replaced.',
+      'confirm.drop': '{minor} “Minor” block(s) will be dropped outright (no summary).',
       'confirm.keep': '{kept} message(s) marked Important stay verbatim in the same turn.',
       'confirm.backup': 'Backup location: {path}',
       'confirm.check': 'I understand the replaced originals leave the model context and cannot be undone in the session.',
@@ -292,7 +305,7 @@ window.__ModuleLoader__.load({
       'done.backup': 'Original backup: {path}',
       'done.check': 'The originals no longer appear in the model context.',
       'done.close': 'Close',
-      'toast.select': 'Mark at least one block Normal or Minor first.',
+      'toast.select': 'Mark at least one block Default or Minor first.',
       'toast.noSplit': 'This block cannot be split without breaking a tool-call pair.',
       'toast.saved': 'Draft saved locally.',
       'toast.saveFailed': 'Could not save the draft: browser storage is unavailable or full. Copy anything you need to keep.',
@@ -327,6 +340,7 @@ window.__ModuleLoader__.load({
       'edit.stale': 'The session grew after this workbench opened. Refresh and try again.',
       'edit.busy': 'The session is working. Apply the edits after the current turn finishes.',
       'detail.loadFull': 'Load full text',
+      'detail.loadFull.hint': 'Read this message’s complete text and editable blocks; read-only, nothing is written to the session.',
       'detail.truncated': 'This text is truncated in the current view.',
       'detail.reasoning': 'Reasoning',
       'detail.toolCall': 'Tool call',
@@ -337,11 +351,11 @@ window.__ModuleLoader__.load({
       'compress.target': 'Target',
       'compress.method': 'Method',
       'compress.curated': 'Compress the curated blocks',
-      'compress.curated.hint': 'Let the model summarize and replace the {count} selected block(s) ({messages} original messages).',
-      'compress.curated.unavailable': 'Nothing to compress yet: mark at least one block Normal or Minor.',
+      'compress.curated.hint': 'The {count} selected block(s) cover {messages} original messages: Default blocks are summarised and replaced, Minor blocks are dropped.',
+      'compress.curated.unavailable': 'Nothing to compress yet: mark at least one block Default or Minor.',
       'compress.official': 'Official /compact',
       'compress.official.hint': 'The official compactor picks an older range and replaces it with one summary; it does not follow the blocks above.',
-      'compress.official.textOnly': 'The text-only compression-summary switch does not affect official /compact; it still reads the full history.',
+      'compress.official.textOnly': 'The text-only summary switch affects only “Default” summaries; “Minor” ranges are always dropped. Official /compact still reads the full history.',
       'compress.official.unavailable': 'This host or agent preset provides no official /compact; restart DSH web after upgrading the plugin.',
       'compress.pendingEdits': '{count} edit(s) are not applied yet; apply or undo them before compressing.',
       'compress.confirm': 'Compress',
@@ -354,9 +368,12 @@ window.__ModuleLoader__.load({
       'compress.irreversible': 'I understand the originals leave the model context and cannot be undone in the session.',
       'compress.backup': 'Pre-compression backup: {path}',
       'footer.compress': 'Compress context',
+      'footer.compress.hint': 'Open the compression confirmation: Default blocks are summarised, Minor blocks are dropped, Important blocks stay verbatim.',
       'footer.applyEdits': 'Apply edits to context',
       'footer.save': 'Save current content',
+      'footer.save.hint': 'Save tones, view switches and staged edits as a local draft; nothing is written to the session.',
       'footer.undo': 'Undo',
+      'footer.undo.hint': 'Revert the most recent tone, edit or split change; this only affects the local workbench draft.',
       'undo.empty': 'Nothing to undo.',
       'undo.done': 'Undid the last change.',
       'panel.help': 'Help',
@@ -379,11 +396,14 @@ window.__ModuleLoader__.load({
       'edit.entryHint': 'Use Edit at the top-right of a message to rewrite text, reasoning, a tool result or injected context.',
       'view.all': 'All content',
       'view.text': 'Dialogue text only',
+      'view.all.hint': 'Show tool calls, tool results, injected context and reasoning; affects viewing/editing only, not the compression range.',
+      'view.text.hint': 'Show only user/assistant dialogue text and hide tools, context and reasoning; affects viewing/editing only, not the compression range.',
       'view.hidden': '{count} tool/context item(s) hidden',
       'view.note': 'The view only filters what you see and edit; compression still covers the whole block.',
       'view.empty': 'This block has no dialogue text to show.',
       'tail.hidden': 'The final message is a tool/context item and is hidden here; compression still keeps it.',
       'summary.textOnly': 'Compression summaries: dialogue text only',
+      'summary.textOnly.hint': 'When on, “Default” summaries read only user/assistant text; “Minor” ranges are still dropped outright, and official /compact is unaffected.',
       'summary.source.all': 'Compression summary source: all content (generated at compression time)',
       'summary.source.text': 'Compression summary source: dialogue text only (tools and context are omitted)',
       'version.label': 'v{version}',
@@ -501,14 +521,14 @@ window.__ModuleLoader__.load({
     // --- per-message tones and compression segments -------------------------
 
     /**
-     * Rough size of the summary the model will write at compression time. The
-     * target is a share of the original range (see the host's tone prompt):
-     * about 12% for Normal and 5% for Minor, with a small floor.
+     * Rough size of one segment's replacement after compression. A Default
+     * segment gets a model-written summary (about 12% of the original, with a
+     * small floor); a Minor segment is dropped and only leaves a short marker.
      */
-    function estimatedSummaryTokens(segment) {
+    function estimatedReplacementTokens(segment) {
+      if (segment && segment.tone === 'minor') return 20
       const tokens = segment && Number.isFinite(segment.tokens) ? Math.max(0, segment.tokens) : 0
-      const ratio = segment && segment.tone === 'minor' ? 0.05 : 0.12
-      return Math.max(120, Math.round(tokens * ratio))
+      return Math.max(120, Math.round(tokens * 0.12))
     }
 
     /**
@@ -1522,6 +1542,7 @@ window.__ModuleLoader__.load({
                       type: 'button',
                       className: `dshcurate-tone${tone === value ? ' active' : ''}`,
                       title: tr(`tone.${value}.hint`),
+                      'aria-label': tr(`tone.${value}.hint`),
                       'aria-pressed': tone === value ? 'true' : 'false',
                       disabled: toneDisabled === true,
                       onClick: () => {
@@ -1533,8 +1554,24 @@ window.__ModuleLoader__.load({
                 : null,
               jsx('span', { className: 'spring' }),
               staged ? jsx('button', { type: 'button', className: 'dshcurate-btn small', onClick: () => onUndo(node), children: tr('edit.undo') }) : null,
-              !full ? jsx('button', { type: 'button', className: 'dshcurate-btn small', disabled: busy, onClick: () => onLoadFull(node), children: tr('detail.loadFull') }) : null,
-              editable && !editingHere ? jsx('button', { type: 'button', className: 'dshcurate-btn small', disabled: busy, onClick: () => onEdit(node), children: tr('edit.entry') }) : null,
+              !full ? jsx('button', {
+                type: 'button',
+                className: 'dshcurate-btn small',
+                disabled: busy,
+                title: tr('detail.loadFull.hint'),
+                'aria-label': tr('detail.loadFull'),
+                onClick: () => onLoadFull(node),
+                children: tr('detail.loadFull'),
+              }) : null,
+              editable && !editingHere ? jsx('button', {
+                type: 'button',
+                className: 'dshcurate-btn small',
+                disabled: busy,
+                title: tr('edit.entryHint'),
+                'aria-label': tr('edit.entry'),
+                onClick: () => onEdit(node),
+                children: tr('edit.entry'),
+              }) : null,
             ],
           }),
           full && full.truncated ? jsx('div', { className: 'dshcurate-note', children: tr('detail.truncated') }) : null,
@@ -1701,6 +1738,7 @@ window.__ModuleLoader__.load({
         type: 'button',
         className: `dshcurate-tone${groupTone === tone ? ' active' : ''}`,
         title: tr(`tone.${tone}.hint`),
+        'aria-label': tr(`tone.${tone}.hint`),
         'aria-pressed': groupTone === tone ? 'true' : 'false',
         disabled: disabled,
         onClick: () => onGroupTone(tone),
@@ -1726,8 +1764,11 @@ window.__ModuleLoader__.load({
           }, segment.key)
         }
         return jsxs('div', {
-          className: 'dshcurate-segment',
-          children: [head, jsx('div', { className: 'dshcurate-note', children: tr('segment.autoSummary') })],
+          className: `dshcurate-segment ${segment.tone === 'minor' ? 'drop' : 'summary'}`,
+          children: [head, jsx('div', {
+            className: 'dshcurate-note',
+            children: tr(segment.tone === 'minor' ? 'segment.drop.note' : 'segment.summary.note'),
+          })],
         }, segment.key)
       })
 
@@ -2470,10 +2511,12 @@ window.__ModuleLoader__.load({
       }
       const selected = compressSegments
       const selectedTokens = compressSegments.reduce((sum, segment) => sum + segment.tokens, 0)
-      const summaryTokens = compressSegments.reduce((sum, segment) => sum + estimatedSummaryTokens(segment), 0)
+      const replacementTokens = compressSegments.reduce((sum, segment) => sum + estimatedReplacementTokens(segment), 0)
       const surfaceTokens = state ? state.surfaceTokens : 0
-      const afterTokens = Math.max(0, surfaceTokens - selectedTokens + summaryTokens)
+      const afterTokens = Math.max(0, surfaceTokens - selectedTokens + replacementTokens)
       const totalMessages = compressSegments.reduce((sum, segment) => sum + segment.count, 0)
+      const summarySegments = compressSegments.filter((segment) => segment.tone !== 'minor').length
+      const dropSegments = compressSegments.filter((segment) => segment.tone === 'minor').length
       const keptMessages = groups.reduce((sum, group) => {
         const current = segmentsOfGroup(group)
         if (!current.some((segment) => segment.tone !== 'keep')) return sum
@@ -2675,8 +2718,10 @@ window.__ModuleLoader__.load({
             })
             showToast(tr('compress.doneOfficial', { count: Array.isArray(result.shadowedSeqs) ? result.shadowedSeqs.length : 0 }))
           } else {
+            // Minor segments are dropped by the host (it writes only the
+            // omission marker); only Default segments get a model summary.
             const ops = opsSegments.map((segment) => ({
-              kind: 'summary',
+              kind: segment.tone === 'minor' ? 'drop' : 'summary',
               startSeq: segment.startSeq,
               endSeq: segment.endSeq,
               tone: segment.tone,
@@ -2693,6 +2738,15 @@ window.__ModuleLoader__.load({
               // /summarize; write the same summaries explicitly and retry.
               const withText = []
               for (const segment of opsSegments) {
+                if (segment.tone === 'minor') {
+                  withText.push({
+                    kind: 'drop',
+                    startSeq: segment.startSeq,
+                    endSeq: segment.endSeq,
+                    tone: segment.tone,
+                  })
+                  continue
+                }
                 const data = await draftSummaryLegacy(sessionId, segment, summaryTextOnly)
                 withText.push({
                   kind: 'summary',
@@ -3004,6 +3058,8 @@ window.__ModuleLoader__.load({
                 ? jsx('div', {
                     className: 'dshcurate-note',
                     children: tr('confirm.body', { count: compressSegments.length, messages: totalMessages })
+                      + (summarySegments > 0 ? ` ${tr('confirm.summary', { normal: summarySegments })}` : '')
+                      + (dropSegments > 0 ? ` ${tr('confirm.drop', { minor: dropSegments })}` : '')
                       + (keptMessages > 0 ? ` ${tr('confirm.keep', { kept: keptMessages })}` : ''),
                   })
                 : null,
@@ -3029,6 +3085,7 @@ window.__ModuleLoader__.load({
                     type: 'button',
                     className: 'dshcurate-btn danger',
                     disabled: !compressChecked || !canConfirmCompression,
+                    title: tr('compress.irreversible'),
                     onClick: confirmCompression,
                     children: compacting ? tr('compress.running') : tr('compress.confirm'),
                   }),
@@ -3170,6 +3227,7 @@ window.__ModuleLoader__.load({
           jsx('select', {
             value: preserveTurns,
             'aria-label': tr('scope.title'),
+            title: tr('scope.note'),
             disabled: applyingEdits || compacting,
             onChange: changePreserve,
             children: [0, 1, 2, 3, 4, 5, 6].map((value) => jsx('option', { value, children: `${value} ${tr('scope.suffix')}` }, value)),
@@ -3180,6 +3238,7 @@ window.__ModuleLoader__.load({
               jsx('button', {
                 type: 'button',
                 className: textOnlyView ? '' : 'active',
+                title: tr('view.all.hint'),
                 'aria-pressed': textOnlyView ? 'false' : 'true',
                 onClick: () => changeTextOnlyView(false),
                 children: tr('view.all'),
@@ -3187,6 +3246,7 @@ window.__ModuleLoader__.load({
               jsx('button', {
                 type: 'button',
                 className: textOnlyView ? 'active' : '',
+                title: tr('view.text.hint'),
                 'aria-pressed': textOnlyView ? 'true' : 'false',
                 onClick: () => changeTextOnlyView(true),
                 children: tr('view.text'),
@@ -3195,6 +3255,7 @@ window.__ModuleLoader__.load({
           }),
           jsxs('label', {
             className: 'dshcurate-flag',
+            title: tr('summary.textOnly.hint'),
             children: [
               jsx('input', {
                 type: 'checkbox',
@@ -3223,7 +3284,7 @@ window.__ModuleLoader__.load({
                 type: 'button',
                 className: 'dshcurate-btn',
                 disabled: applyingEdits || compacting,
-                title: busySession ? tr('panel.busy') : undefined,
+                title: busySession ? tr('panel.busy') : tr('footer.compress.hint'),
                 onClick: () => {
                   if (busySession) {
                     showToast(tr('panel.busy'))
@@ -3237,6 +3298,7 @@ window.__ModuleLoader__.load({
                 type: 'button',
                 className: 'dshcurate-btn',
                 disabled: applyingEdits || compacting,
+                title: tr('footer.save.hint'),
                 onClick: saveDraftNow,
                 children: tr('footer.save'),
               }),
@@ -3244,6 +3306,7 @@ window.__ModuleLoader__.load({
                 type: 'button',
                 className: 'dshcurate-btn',
                 disabled: undoStack.length === 0,
+                title: tr('footer.undo.hint'),
                 onClick: undoLast,
                 children: tr('footer.undo'),
               }),
@@ -3474,7 +3537,7 @@ window.__ModuleLoader__.load({
       MessageDetail,
       isConversationNode,
       buildToneUnits,
-      estimatedSummaryTokens,
+      estimatedReplacementTokens,
       segmentsForGroup,
       groupToneOf,
       GroupCard,

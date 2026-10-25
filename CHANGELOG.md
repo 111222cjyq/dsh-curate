@@ -9,6 +9,42 @@ must be reconstructed from the repository history after the first push. The
 0.4.1 entry is dated from the working-tree file timestamps; confirm it against
 the actual release history before publishing.
 
+## [0.6.0] - 2026-10-25
+
+### Fixed
+
+- **“查看完整内容” and “编辑” failed with HTTP 500.** `messageOf()` evaluated
+  the append-text verdict before `truncated` was initialized, so every
+  `/dsh-curate/message` request threw
+  `Cannot access 'truncated' before initialization`. The cap result is now
+  computed first, and route-level regression tests cover normal replies,
+  reasoning-only replies and over-long messages.
+
+### Changed
+
+- **The tone scale is now Important / Default / Minor.** “Default” (formerly
+  “Normal”) keeps the normal compression behaviour; “Minor” is no longer a
+  shorter summary — its ranges are dropped from the model context without a
+  model call, leaving only a short “omitted” marker. Internal tone keys
+  (`keep` / `normal` / `minor`) and draft storage are unchanged.
+- Token estimates, the “after compression” preview, segment notes, the
+  confirmation dialog and the toasts now distinguish summary ranges from
+  dropped ranges.
+- Tone buttons and the workbench toolbar (recent-turns scope, all/dialogue
+  view, text-only summaries, full text, edit, compress, save, undo) carry
+  explicit hover/aria descriptions.
+- Updated README, locale metadata and the read-only live-verification script
+  for the new labels.
+
+### Added
+
+- `test/apply-context.test.mjs`: drives the real plugin routes against a real
+  `@deepseek-ai/dsh-session` `Session`, then folds the log with the plugin's
+  message projection and asserts what the model derives. It proves that a
+  mixed Default/Minor plan writes a summary plus an omission marker, that only
+  the Default range calls the summarizer, and that prompt/reply edits reach
+  the model context without starting a turn.
+
 ## [0.5.2] - 2026-10-22
 
 ### Added

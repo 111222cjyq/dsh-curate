@@ -135,11 +135,11 @@ test('rendered Markdown resolves workspace-relative images through api/file', ()
   assert.equal(images[1].getAttribute('src'), 'https://example.com/x.png')
 })
 
-test('estimatedSummaryTokens scales with the tone and the original size', () => {
+test('estimatedReplacementTokens accounts for Default summaries and Minor drops', () => {
   const { mod } = loadClient()
-  assert.equal(mod.__internals.estimatedSummaryTokens({ tone: 'normal', tokens: 10_000 }), 1_200)
-  assert.equal(mod.__internals.estimatedSummaryTokens({ tone: 'minor', tokens: 10_000 }), 500)
-  assert.equal(mod.__internals.estimatedSummaryTokens({ tone: 'normal', tokens: 10 }), 120, 'the estimate has a floor')
+  assert.equal(mod.__internals.estimatedReplacementTokens({ tone: 'normal', tokens: 10_000 }), 1_200)
+  assert.equal(mod.__internals.estimatedReplacementTokens({ tone: 'minor', tokens: 10_000 }), 20, 'a dropped segment leaves only a short marker')
+  assert.equal(mod.__internals.estimatedReplacementTokens({ tone: 'normal', tokens: 10 }), 120, 'the estimate has a floor')
 })
 
 test('editKeyFor is stable per message and block', () => {
@@ -406,7 +406,7 @@ test('MessageDetail renders per-message tone buttons', () => {
   }))
   assert.match(html, /dshcurate-msg-tones/)
   assert.match(html, /Important|重要/)
-  assert.match(html, /Normal|一般/)
+  assert.match(html, /Default|默认/)
   assert.match(html, /Minor|次要/)
 })
 

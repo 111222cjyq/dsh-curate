@@ -153,7 +153,7 @@ test('Workbench ready state renders cards, the tail and all four footer actions'
     const lockedToneHost = container.querySelector('.dshcurate-card.locked .dshcurate-tones')
     assert.ok(lockedToneHost, 'recent turns keep their bulk tone controls')
     const lockedNormal = Array.from(lockedToneHost.querySelectorAll('.dshcurate-tone'))
-      .find((button) => /Normal|一般/.test(button.textContent))
+      .find((button) => /Default|默认/.test(button.textContent))
     assert.ok(lockedNormal, 'recent turns allow an override tone')
     await act(async () => { lockedNormal.click() })
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 30)) })
@@ -172,6 +172,67 @@ test('Workbench ready state renders cards, the tail and all four footer actions'
   }
 })
 
+
+test('tone labels and hover hints match Important / Default / Minor semantics', async () => {
+  const payload = statePayload()
+  const fetchImpl = async (url) => {
+    if (String(url).includes('/dsh-curate/state')) return { ok: true, json: async () => payload }
+    throw new Error(`unexpected fetch: ${url}`)
+  }
+  const { win, mod } = loadClient(fetchImpl)
+  globalThis.window = win
+  globalThis.document = win.document
+  Object.defineProperty(globalThis, 'navigator', { value: win.navigator, configurable: true, writable: true })
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true
+  const ReactDOMClient = require('react-dom/client')
+  const container = win.document.getElementById('root')
+  const root = ReactDOMClient.createRoot(container)
+  try {
+    const { act } = React
+    await act(async () => {
+      root.render(React.createElement(mod.__internals.Workbench, { sessionId: 'session-1', onClose: () => {} }))
+    })
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 40)) })
+
+    const toneButtons = Array.from(container.querySelectorAll('.dshcurate-card:not(.locked) .dshcurate-tones .dshcurate-tone'))
+    assert.equal(toneButtons.length, 3, 'one bulk control per tone')
+    const labels = toneButtons.map((button) => button.textContent.trim())
+    assert.ok(labels.some((label) => /重要|Important/.test(label)), JSON.stringify(labels))
+    assert.ok(labels.some((label) => /默认|Default/.test(label)), JSON.stringify(labels))
+    assert.ok(labels.some((label) => /次要|Minor/.test(label)), JSON.stringify(labels))
+    const findTone = (pattern) => toneButtons.find((button) => pattern.test(button.textContent))
+    for (const button of toneButtons) {
+      assert.ok((button.getAttribute('title') || '').length > 10, `tone ${button.textContent} has a hover hint`)
+      assert.ok((button.getAttribute('aria-label') || '').length > 10, `tone ${button.textContent} has an accessible name`)
+    }
+    assert.match(findTone(/重要|Important/).getAttribute('title'), /保留|keep|verbatim/i)
+    assert.match(findTone(/默认|Default/).getAttribute('title'), /摘要|summar/i)
+    assert.match(findTone(/次要|Minor/).getAttribute('title'), /丢弃|drop/i)
+
+    const viewButtons = Array.from(container.querySelectorAll('.dshcurate-view button'))
+    assert.equal(viewButtons.length, 2)
+    assert.ok(viewButtons.every((button) => (button.getAttribute('title') || '').length > 10),
+      'both view switches explain that they do not change the compression range')
+    const scopeSelect = container.querySelector('.dshcurate-scope select')
+    assert.ok(scopeSelect && (scopeSelect.getAttribute('title') || '').length > 10, 'the recent-turns select has a hint')
+    const summaryFlag = container.querySelector('.dshcurate-flag')
+    assert.ok(summaryFlag && (summaryFlag.getAttribute('title') || '').length > 10,
+      'the text-only summary switch has a hint')
+    const compressButton = Array.from(container.querySelectorAll('.dshcurate-foot button'))
+      .find((button) => /Compress context|压缩上下文/.test(button.textContent))
+    assert.ok(compressButton && (compressButton.getAttribute('title') || '').length > 10,
+      'the compress button explains the three tone outcomes')
+    const loadFull = Array.from(container.querySelectorAll('button'))
+      .find((button) => /查看完整内容|Load full text/.test(button.textContent))
+    assert.ok(loadFull, 'a locked message offers the full-text action')
+    assert.ok((loadFull.getAttribute('title') || '').length > 10, 'the full-text action says it is read-only')
+
+    await act(async () => { root.unmount() })
+  } catch (error) {
+    try { root.unmount() } catch {}
+    throw error
+  }
+})
 
 test('Workbench applies staged edits, then compresses with auto-generated summaries', async () => {
   const payload = statePayload()
@@ -268,8 +329,16 @@ test('Workbench applies staged edits, then compresses with auto-generated summar
     assert.equal(applyBody.autoSummarize, true, 'the host writes summaries at compression time')
     assert.equal(applyBody.expectedLastSeq, 7, 'the plan targets the post-edit session head')
     assert.ok(applyBody.ops.length > 0)
-    assert.ok(applyBody.ops.every((op) => op.kind === 'summary' && (op.tone === 'normal' || op.tone === 'minor')))
-    assert.ok(!('text' in applyBody.ops[0]), 'the client sends no hand-written summary text')
+    assert.deepEqual(
+      applyBody.ops.map((op) => `${op.kind}:${op.tone}`).sort(),
+      ['drop:minor', 'summary:normal'],
+      'Minor segments are dropped and only Default segments are summarised',
+    )
+    assert.ok(applyBody.ops.every((op) => !('text' in op)), 'the client sends no hand-written summary text')
+    assert.ok(
+      applyBody.ops.filter((op) => op.kind === 'drop').every((op) => op.startSeq === 1 && op.endSeq === 3),
+      'the whole Minor segment is dropped',
+    )
 
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 450)) })
     await act(async () => { root.unmount() })

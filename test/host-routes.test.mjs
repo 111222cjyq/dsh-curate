@@ -199,6 +199,75 @@ test('missing or malformed seq parameters are 400s', async () => {
   assert.equal(negative.status, 400)
 })
 
+test('GET /message returns the full text instead of failing', async () => {
+  const dispatch = mount()
+  const reply = await dispatch('/dsh-curate/message', makeReq({ url: `/dsh-curate/message?sessionId=${LIVE_ID}&seq=3` }))
+  assert.equal(reply.status, 200)
+  const body = parse(reply)
+  assert.equal(body.seq, 3)
+  assert.equal(body.text, 'hello')
+  assert.equal(body.truncated, false)
+  assert.equal(body.canAppendText, false)
+  assert.equal(body.editable, true)
+  assert.equal(body.editKind, 'reply')
+
+  const prompt = await dispatch('/dsh-curate/message', makeReq({ url: `/dsh-curate/message?sessionId=${LIVE_ID}&seq=2` }))
+  assert.equal(prompt.status, 200)
+  assert.equal(parse(prompt).editKind, 'prompt')
+})
+
+test('GET /message keeps the reasoning-only append path reachable', async () => {
+  const events = surfaceEvents()
+  events[3] = {
+    seq: 3,
+    type: 'assistant/message',
+    data: {
+      turn: 1,
+      step: 1,
+      message: {
+        id: 'a1',
+        role: 'assistant',
+        source: { kind: 'model', provider: 'test-provider', model: 'test-model' },
+        content: [{ type: 'reasoning', text: 'thinking only' }],
+      },
+    },
+    surfaceOp: 'append',
+  }
+  const dispatch = mount({ events })
+  const res = await dispatch('/dsh-curate/message', makeReq({ url: `/dsh-curate/message?sessionId=${LIVE_ID}&seq=3` }))
+  assert.equal(res.status, 200)
+  const body = parse(res)
+  assert.equal(body.canAppendText, true)
+  assert.equal(body.editable, true)
+  assert.deepEqual(body.editableBlocks.map((block) => block.kind), ['reasoning'])
+})
+
+test('GET /message reports an over-long message as truncated instead of failing', async () => {
+  const events = surfaceEvents()
+  events[3] = {
+    seq: 3,
+    type: 'assistant/message',
+    data: {
+      turn: 1,
+      step: 1,
+      message: {
+        id: 'a1',
+        role: 'assistant',
+        source: { kind: 'model', provider: 'test-provider', model: 'test-model' },
+        content: [{ type: 'text', text: 'x'.repeat(500_001) }],
+      },
+    },
+    surfaceOp: 'append',
+  }
+  const dispatch = mount({ events })
+  const res = await dispatch('/dsh-curate/message', makeReq({ url: `/dsh-curate/message?sessionId=${LIVE_ID}&seq=3` }))
+  assert.equal(res.status, 200)
+  const body = parse(res)
+  assert.equal(body.truncated, true)
+  assert.equal(body.editable, false)
+  assert.equal(body.editReason, 'too-long')
+})
+
 test('guard rejects non-loopback peers, a foreign Host header and cross-origin requests', async () => {
   const dispatch = mount()
   const remote = makeReq({ url: `/dsh-curate/state?sessionId=${LIVE_ID}` })

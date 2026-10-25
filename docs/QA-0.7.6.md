@@ -8,6 +8,7 @@
 - `npm run build`：通过（client bundle 版本 0.7.6）；
 - `npm run check`：通过；
 - `npm test`：**137 passed, 0 failed**；
+- `scripts/verify-live.mjs`（只读 CDP，不写 /apply /edit /compact）：**94 passed, 0 failed, 1 warning**（warning 为所选会话只有一张分组卡片，不影响结论）；
 - 新增/相关测试：
   - 编辑器顶部「保存修改 / 取消」按钮渲染与可用性；
   - Chat「已修改」标记的 DOM 装饰与恢复；

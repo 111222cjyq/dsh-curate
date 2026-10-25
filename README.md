@@ -170,6 +170,7 @@ dsh-curate 的投影和显示层在 DSH 本地是正确的，但“本地投影�
 
 - `npm run check` 通过；
 - `npm test`：**137 passed, 0 failed**；
+- 只读实机回归 `verify-live.mjs`：**94 passed, 0 failed, 1 warning**；
 - 0.7.6 实机案例：在干净的“雨夜车站”示例会话中完成编辑、应用、真实 Chat 高亮、改动详情、编辑器顶部/底部按钮和压缩预览，页面无报错；
 - 0.7.6 修复：Chat「已修改」标记不再遮挡正文、编辑器标题重复。
 

@@ -99,6 +99,7 @@ const LABEL = {
   curated: '按整理结果压缩|Compress the curated blocks',
   official: '官方 /compact|Official /compact',
   pendingEdit: '处修改待应用|pending edit',
+  pendingEditCount: '\\d+\\s*处修改待应用|\\d+\\s*pending edit',
   staged: '已修改（待应用）|Edited \\(pending\\)',
   undoDone: '已撤销上一步|Undid the last change',
   draftSaved: '草稿已保存到本地|Draft saved locally',
@@ -710,7 +711,7 @@ async function main() {
     check('obsolete Draft footer button is gone', !footerTexts.some((text) => /Draft|生成/.test(text)), clip(footerTexts))
     check('apply is disabled before any edit', panel.footer[applyIndex]?.disabled === true, clip(panel.footer[applyIndex]))
     check('undo is disabled before any change', panel.footer[undoIndex]?.disabled === true, clip(panel.footer[undoIndex]))
-    check('footer notes stay quiet before any edit', !panel.notes.some((note) => new RegExp(patternSource('pendingEdit'), 'i').test(note)), clip(panel.notes))
+    check('footer notes stay quiet before any edit', !panel.notes.some((note) => new RegExp(patternSource('pendingEditCount'), 'i').test(note)), clip(panel.notes))
 
     // Version marker comes from the built client bundle, not a hardcoded value.
     check('client bundle version is exposed on the page', typeof panel.clientVersion === 'string' && panel.clientVersion !== '', String(panel.clientVersion))
@@ -991,7 +992,7 @@ async function main() {
         check('footer switches to "modify and apply to context"', stagedApply !== undefined, clip(stage.footer))
         check('apply becomes enabled once an edit is staged', stagedApply !== undefined && stagedApply.disabled === false, clip(stagedApply))
         check('undo becomes enabled once an edit is staged', stagedUndo !== undefined && stagedUndo.disabled === false, clip(stagedUndo))
-        check('footer reports the pending edit count', stage.notes.some((note) => new RegExp(patternSource('pendingEdit'), 'i').test(note)), clip(stage.notes))
+        check('footer reports the pending edit count', stage.notes.some((note) => new RegExp(patternSource('pendingEditCount'), 'i').test(note)), clip(stage.notes))
         check('staged message is badged as pending', /已修改|Edited|pending/i.test(stage.toast) || stage.staged > 0, clip(stage.toast))
 
         const undo = await evaluate(send, `(async () => {

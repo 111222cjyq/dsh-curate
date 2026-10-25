@@ -42,7 +42,7 @@ dsh-curate 适合长文本互动中的**有限、精确、可审计**上下文�
 
 ## 验证
 
-- 137 项自动化测试通过；
+- 137 项自动化测试通过；只读实机回归 `verify-live.mjs` 94 passed / 0 failed；
 - 实机案例覆盖编辑、应用、真实 Chat 高亮、改动详情、编辑器双端按钮、压缩预览；
 - 架构图：[docs/screenshots/06-architecture.png](https://github.com/111222cjyq/dsh-curate/blob/main/docs/screenshots/06-architecture.png)
 - 使用手册：[docs/USAGE.md](https://github.com/111222cjyq/dsh-curate/blob/main/docs/USAGE.md)
